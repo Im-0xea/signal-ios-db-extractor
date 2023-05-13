@@ -125,6 +125,7 @@ const char * lookup(const char ** table, const char * key, const size_t limit)
 
 int dump(const char * source, const char * output, const bool list, const char * groups)
 {
+	// either set output file descriptor to stdout or open defined output as fd
 	int out_fd;
 	if (output == NULL)
 	{
@@ -135,7 +136,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		out_fd = open(output, O_WRONLY | O_CREAT, 0644);
 	}
 	
-	// open database
+	// open sqlite3 database
 	sqlite3 * db;
 	const char * tail;
 	if ((sqlite3_open(source, &db)) != SQLITE_OK)
@@ -146,6 +147,8 @@ int dump(const char * source, const char * output, const bool list, const char *
 	sqlite3_stmt * stmt;
 	
 	// get profile phone number
+	// I decided to just take the first Recipients phone number
+	// as this consistently returns your own
 	char * acc_number;
 	if (sqlite3_prepare_v2(db, "SELECT recipientPhoneNumber FROM model_SignalRecipient WHERE id = 1;", -1, &stmt, NULL) != SQLITE_OK)
 	{
@@ -165,6 +168,9 @@ int dump(const char * source, const char * output, const bool list, const char *
 	}
 	
 	// create profile lookup table
+	// this table contains [0] Profile Name [1] Phone number
+	// allowing you to find the name of the sender of a message
+	// and looking up the name associated with a dm group
 	if (sqlite3_prepare_v2(db, "SELECT profileName, recipientPhoneNumber from model_OWSUserProfile;", -1, &stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error Parsing Profile Table\n");
@@ -202,6 +208,8 @@ int dump(const char * source, const char * output, const bool list, const char *
 	}
 	
 	// create group lookup table
+	// this table contains [0] Group Name [1] Group ID
+	// allowing you to associate messages with group names
 	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber from model_TSThread;", -1, &stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error Parsing Profile Table\n");
@@ -245,6 +253,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	}
 	
 	// message loop
+	// loops over all entries of the interaction table and prints them accordingly
 	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType from model_TSInteraction;", -1, &stmt, &tail)) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading from Interaction table\n");
@@ -257,6 +266,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		const unsigned char * record = sqlite3_column_text(stmt, 1);
+		// get group name from group_table
 		const unsigned char * group = lookup((const char **) group_table, record, group_table_pos);
 		if (!groups || group && strcmp(group, groups) == NULL)
 		{
@@ -270,11 +280,13 @@ int dump(const char * source, const char * output, const bool list, const char *
 			{
 				author = (char *) sqlite3_column_text(stmt, 2);
 			}
+			// get author name form name_table
 			const unsigned char * name = lookup((const char **) name_table, author, name_table_pos);
 			
 			char buffer[30];
 			if (sqlite3_column_type(stmt, 0) != SQLITE_NULL)
 			{
+				// print message
 				const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
 				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
 				if (tm_info.tm_yday != tm_info_tmp.tm_yday)
@@ -290,6 +302,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 			}
 			else if (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
 			{
+				// print call
 				const unsigned int call = sqlite3_column_int64(stmt, 4);
 				const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
 				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
@@ -316,6 +329,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	sqlite3_finalize(stmt);
 	sqlite3_close(db);
 	
+	// free name_table
 	while (1)
 	{
 		name_table_pos -= 2;
@@ -328,6 +342,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	}
 	free(name_table);
 	
+	// free group table (if needed)
 	if (!list)
 	{
 		while (1)
@@ -343,6 +358,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		free(group_table);
 	}
 	
+	// free file if defined
 	if (output != NULL)
 	{
 		close(out_fd);
