@@ -27,7 +27,7 @@ static void help(void)
 
 int main(const int argc, char ** argv)
 {
-	const char * short_options = "hVs:o:c:l:g:";
+	const char * short_options = "hVs:o:c:lg:";
 	const struct option long_option[] =
 	{
 		{
