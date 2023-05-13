@@ -8,7 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define VERSION "0.2"
+#define VERSION "0.1"
 
 int dump(const char * source, const char * output, const bool list);
 
