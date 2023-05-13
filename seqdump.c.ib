@@ -168,6 +168,7 @@ int dump(const char * source, const char * output, const bool list)
 			dprintf(out_fd, "%s (%s(%s)):\n\t", buffer, name, author)
 			dprintf(out_fd, "%s\n\n", body)
 		else if (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
+			const unsigned int call = sqlite3_column_int64(stmt, 4)
 			const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
 			const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp)
 			if (tm_info.tm_yday != tm_info_tmp.tm_yday)
@@ -176,7 +177,7 @@ int dump(const char * source, const char * output, const bool list)
 			tm_info = tm_info_tmp
 			strftime(buffer, 30, "%H:%M", &tm_info)
 			dprintf(out_fd, "%s (%s(%s)):\n\t", buffer, name, author)
-			dprintf(out_fd, "<%s voice call>\n\n", "Outgoing")
+			dprintf(out_fd, "<%s voice call>\n\n", call == 2 ? "Outgoing" : call == 1 ? "Incomming" : call == 8 ? "Unanswered" : call == 12 ? "Missed call while on Do not disturb" : call == 7 ? "Declied" : call == 3 ? "Missed" : "")
 	
 	close:
 	
