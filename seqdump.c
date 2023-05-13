@@ -15,13 +15,13 @@ int dump(const char * source, const char * output, const bool list);
 static void help(void)
 {
 	puts("Usage seqdump: -s [DATABASE] -o [OUTPUT] \n\n" \
-		"ib is a transpiler for languages which are not line based\n" \
+		"A tool for dumping Signal history from the iOS database.\n" \
 		"\n" \
 		" -h --help      -> print this page\n" \
 		" -V --version   -> show current version\n" \
 		" -s --sql       -> define sql database\n" \
 		" -o --output    -> define output\n" \
-		" -l --list      -> list rooms\n\n");
+		" -l --list      -> list rooms\n");
 }
 
 int main(const int argc, char ** argv)
@@ -191,6 +191,8 @@ int dump(const char * source, const char * output, const bool list)
 		return 1;
 	}
 	
+	const time_t unixstart = 0;
+	struct tm tm_info = *gmtime(&unixstart);
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
 		const unsigned char * record = sqlite3_column_text(stmt, 1);
@@ -219,18 +221,33 @@ int dump(const char * source, const char * output, const bool list)
 			}
 			
 		}
-		const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
-		struct tm *tm_info = localtime((time_t *) &timestamp);
 		char buffer[30];
-		strftime(buffer, 30, "%H:%M", tm_info);
 		if (sqlite3_column_type(stmt, 0) != SQLITE_NULL)
 		{
+			const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
+			const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
+			if (tm_info.tm_yday != tm_info_tmp.tm_yday)
+			{
+				strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
+				dprintf(out_fd, "------%s------\n\n", buffer);
+			}
+			tm_info = tm_info_tmp;
+			strftime(buffer, 30, "%H:%M", &tm_info);
 			const unsigned char * body = sqlite3_column_text(stmt, 0);
 			dprintf(out_fd, "%s (%s(%s)):\n\t", buffer, name, author);
 			dprintf(out_fd, "%s\n\n", body);
 		}
 		else if (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
 		{
+			const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
+			const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
+			if (tm_info.tm_yday != tm_info_tmp.tm_yday)
+			{
+				strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
+				dprintf(out_fd, "------%s------\n\n", buffer);
+			}
+			tm_info = tm_info_tmp;
+			strftime(buffer, 30, "%H:%M", &tm_info);
 			dprintf(out_fd, "%s (%s(%s)):\n\t", buffer, name, author);
 			dprintf(out_fd, "<%s voice call>\n\n", "Outgoing");
 		}
