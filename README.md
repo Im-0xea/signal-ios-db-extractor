@@ -6,7 +6,7 @@ A tool for dumping Signal history from iOS.
 
 This tool takes the database aquired following [this](https://cight.co/backup-signal-ios-jailbreak/) excellent guide, and dumps it in a Human readable format.
 
-~~~
+<pre>
 ------06-12-2021------
 
 19:33 [ Niki ] :
@@ -22,4 +22,4 @@ This tool takes the database aquired following [this](https://cight.co/backup-si
 19:44 [ Niki ] :
     <"No these are not my personal messages... sorry.">
     Im not kidding.
-~~~
+</pre>
