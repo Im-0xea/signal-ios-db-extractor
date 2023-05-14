@@ -3,10 +3,12 @@
 #include <stdbool.h>
 #include <getopt.h>
 #include <string.h>
-#include <sqlite3.h>
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#include <sqlite3.h>
+#include <plist/plist.h>
 
 #define VERSION "0.1"
 
@@ -151,6 +153,37 @@ const size_t uuid_plister(char *** dest, char * plist, char * plist_end)
 		plist++;
 	}
 	return count;
+}
+
+// parser for quoted messages hidden in plists
+// this is a strong bodge but its performant and simple
+const size_t quote_plister(char ** dest, char * plist, char * plist_end)
+{
+	while (plist < plist_end)
+	{
+		// 0280 0a10 005f 1020
+		if (*plist == 0x5f)
+		{
+			plist++;
+			if (*plist == '_')
+			{
+				plist++;
+				plist++;
+				break;
+			}
+		}
+		else
+		{
+			plist++;
+		}
+	}
+	char * ptr = plist;
+	while (ptr <= plist_end && *ptr != 18) ptr++;
+	
+	const size_t len = ptr - plist;
+	*dest = malloc(len * sizeof(char));
+	strncpy(*dest, plist, len);
+	return 1;
 }
 
 int dump(const char * source, const char * output, const bool list, const char * groups)
@@ -331,7 +364,14 @@ int dump(const char * source, const char * output, const bool list, const char *
 				dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
 				if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
 				{
-					dprintf(out_fd, "<%s>\n\t", "quote");
+					void * blob_data = sqlite3_column_blob(stmt, 6);
+					const size_t blob_size = sqlite3_column_bytes(stmt, 6);
+					char * quote = NULL;
+					if (quote_plister(&quote, blob_data, blob_data + blob_size))
+					{
+						dprintf(out_fd, "<\"%s\">\n\t", quote);
+					}
+					free(quote);
 				}
 				if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 				{
