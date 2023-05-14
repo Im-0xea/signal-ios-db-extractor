@@ -254,7 +254,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	
 	// message loop
 	// loops over all entries of the interaction table and prints them accordingly
-	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType from model_TSInteraction;", -1, &stmt, &tail)) != SQLITE_OK)
+	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds from model_TSInteraction;", -1, &stmt, &tail)) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading from Interaction table\n");
 		sqlite3_close(db);
@@ -268,7 +268,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		const unsigned char * record = sqlite3_column_text(stmt, 1);
 		// get group name from group_table
 		const unsigned char * group = lookup((const char **) group_table, record, group_table_pos);
-		if (!groups || group && strcmp(group, groups) == NULL)
+		if (!groups || group && strcmp(group, groups) == 0)
 		{
 			unsigned char * author;
 			// small hack - the authorPhoneNumber is Null if its from you
@@ -320,6 +320,21 @@ int dump(const char * source, const char * output, const bool list, const char *
 				                                       call == 12 ? "Missed call while on Do not disturb" : \
 				                                       call == 7  ? "Declied" : \
 				                                       call == 3  ? "Missed" : "");
+			}
+			else if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
+			{
+				// print attachments
+				const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
+				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
+				if (tm_info.tm_yday != tm_info_tmp.tm_yday)
+				{
+					strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
+					dprintf(out_fd, "------%s------\n\n", buffer);
+				}
+				tm_info = tm_info_tmp;
+				strftime(buffer, 30, "%H:%M", &tm_info);
+				dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
+				dprintf(out_fd, "%s\n\n", "<something empty>");
 			}
 		}
 	}
