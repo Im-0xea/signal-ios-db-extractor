@@ -193,13 +193,13 @@ int dump(const char * source, const char * output, const bool list, const char *
 		// get group name from group_table
 		const unsigned char * group = lookup((const char **) group_table, record, group_table_pos)
 		if (!groups || group && strcmp(group, groups) == NULL)
-			//dprintf(out_fd, "group: %s\n", group)
 			unsigned char * author
+			// small hack - the authorPhoneNumber is Null if its from you
+			// so this is why we needed to safe it before
 			if (sqlite3_column_type(stmt, 2) == SQLITE_NULL)
 				author = acc_number
 			else
 				author = (char *) sqlite3_column_text(stmt, 2)
-			// get author name form name_table
 			const unsigned char * name = lookup((const char **) name_table, author, name_table_pos)
 			
 			char buffer[30]
@@ -226,12 +226,12 @@ int dump(const char * source, const char * output, const bool list, const char *
 				tm_info = tm_info_tmp
 				strftime(buffer, 30, "%H:%M", &tm_info)
 				dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name)
-				dprintf(out_fd, "<%s voice call>\n\n", call == 2 ? "Outgoing" : \
-				                                       call == 1 ? "Incomming" : \
-				                                       call == 8 ? "Unanswered" : \
+				dprintf(out_fd, "<%s voice call>\n\n", call == 2  ? "Outgoing" : \
+				                                       call == 1  ? "Incomming" : \
+				                                       call == 8  ? "Unanswered" : \
 				                                       call == 12 ? "Missed call while on Do not disturb" : \
-				                                       call == 7 ? "Declied" : \
-				                                       call == 3 ? "Missed" : "")
+				                                       call == 7  ? "Declied" : \
+				                                       call == 3  ? "Missed" : "")
 	
 	close:
 	
