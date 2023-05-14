@@ -123,6 +123,32 @@ const char * lookup(const char ** table, const char * key, const size_t limit)
 	return NULL;
 }
 
+const size_t uuid_plister(char *** dest, char * plist, char * plist_end)
+{
+	size_t count = 0;
+	size_t last_malloc = 10;
+	while (plist + 37 <= plist_end)
+	{
+		if (*plist == '$' && *(plist + 9) == '-')
+		{
+			if (!count)
+			{
+				*dest = malloc(10 * sizeof(char *));
+			}
+			else if (last_malloc <= count)
+			{
+				*dest = realloc(*dest, (count + 10) * sizeof(char *));
+			}
+			*dest[count] = malloc(40 * sizeof(char));
+			strncpy(*dest[count], plist + 1, 36);
+			count++;
+			plist += 35;
+		}
+		plist++;
+	}
+	return count;
+}
+
 int dump(const char * source, const char * output, const bool list, const char * groups)
 {
 	// either set output file descriptor to stdout or open defined output as fd
@@ -254,7 +280,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	
 	// message loop
 	// loops over all entries of the interaction table and prints them accordingly
-	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds from model_TSInteraction;", -1, &stmt, &tail)) != SQLITE_OK)
+	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage from model_TSInteraction;", -1, &stmt, &tail)) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading from Interaction table\n");
 		sqlite3_close(db);
@@ -288,6 +314,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 			{
 				// print message
 				const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
+				const double timestampd = (float) sqlite3_column_int64(stmt, 3) / (float) 1000.0;
 				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
 				if (tm_info.tm_yday != tm_info_tmp.tm_yday)
 				{
@@ -298,6 +325,22 @@ int dump(const char * source, const char * output, const bool list, const char *
 				strftime(buffer, 30, "%H:%M", &tm_info);
 				const unsigned char * body = sqlite3_column_text(stmt, 0);
 				dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
+				if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
+				{
+					dprintf(out_fd, "<%s>\n\t", "quote");
+				}
+				if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
+				{
+					const void * blob_data = sqlite3_column_blob(stmt, 5);
+					const blob_size = sqlite3_column_bytes(stmt, 5);
+					char ** uuids = NULL;
+					size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size);
+					while (uuidc)
+					{
+						--uuidc;
+						dprintf(out_fd, "%s\n\t", uuids[uuidc]);
+					}
+				}
 				dprintf(out_fd, "%s\n\n", body);
 			}
 			else if (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
@@ -323,18 +366,16 @@ int dump(const char * source, const char * output, const bool list, const char *
 			}
 			else if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 			{
-				// print attachments
-				const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
-				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
-				if (tm_info.tm_yday != tm_info_tmp.tm_yday)
-				{
-					strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
-					dprintf(out_fd, "------%s------\n\n", buffer);
-				}
-				tm_info = tm_info_tmp;
-				strftime(buffer, 30, "%H:%M", &tm_info);
-				dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
-				dprintf(out_fd, "%s\n\n", "<something empty>");
+				// print solo attachements
+				// const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
+				// const time_t timestampd = sqlite3_column_int64(stmt, 3)
+				// const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp)
+				// if (tm_info.tm_yday != tm_info_tmp.tm_yday)
+				// 	strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
+				// 	dprintf(out_fd, "------%s------\n\n", buffer);
+				// tm_info = tm_info_tmp
+				// strftime(buffer, 30, "%H:%M", &tm_info);
+				// dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
 			}
 		}
 	}
