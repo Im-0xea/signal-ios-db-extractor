@@ -123,6 +123,8 @@ const char * lookup(const char ** table, const char * key, const size_t limit)
 	return NULL;
 }
 
+// parser for attachement uuids hidden in plists
+// this is a strong bodge but its performant and simple
 const size_t uuid_plister(char *** dest, char * plist, char * plist_end)
 {
 	size_t count = 0;
@@ -138,9 +140,11 @@ const size_t uuid_plister(char *** dest, char * plist, char * plist_end)
 			else if (last_malloc <= count)
 			{
 				*dest = realloc(*dest, (count + 10) * sizeof(char *));
+				last_malloc += 10;
 			}
-			*dest[count] = malloc(40 * sizeof(char));
-			strncpy(*dest[count], plist + 1, 36);
+			(*dest)[count] = malloc(40 * sizeof(char));
+			bzero((*dest)[count], 40);
+			strncpy((*dest)[count], plist + 1, 36);
 			count++;
 			plist += 35;
 		}
@@ -331,15 +335,39 @@ int dump(const char * source, const char * output, const bool list, const char *
 				}
 				if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 				{
-					const void * blob_data = sqlite3_column_blob(stmt, 5);
-					const blob_size = sqlite3_column_bytes(stmt, 5);
+					void * blob_data = sqlite3_column_blob(stmt, 5);
+					const size_t blob_size = sqlite3_column_bytes(stmt, 5);
 					char ** uuids = NULL;
 					size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size);
+					sqlite3_stmt * stmtu = NULL;
 					while (uuidc)
 					{
 						--uuidc;
-						dprintf(out_fd, "%s\n\t", uuids[uuidc]);
+						if ((sqlite3_prepare_v2(db, "SELECT localRelativeFilePath from model_TSAttachment where uniqueId = ?;", -1, &stmtu, NULL)) != SQLITE_OK)
+						{
+							fprintf(stderr, "Error reading from Attachment table\n");
+							sqlite3_close(db);
+							return 1;
+						}
+						if (sqlite3_bind_text(stmtu, 1, uuids[uuidc], -1, SQLITE_TRANSIENT) != SQLITE_OK)
+						{
+							fprintf(stderr, "Error reading from Interaction table\n");
+							sqlite3_close(db);
+							return 1;
+						}
+						if (sqlite3_step(stmtu) == SQLITE_ROW)
+						{
+							char * path = sqlite3_column_text(stmtu, 0);
+							dprintf(out_fd, "<attachment %s>\n\t", path);
+						}
+						free (uuids[uuidc]);
+						if (!uuidc)
+						{
+							sqlite3_finalize(stmtu);
+							free (uuids);
+						}
 					}
+					
 				}
 				dprintf(out_fd, "%s\n\n", body);
 			}
@@ -366,16 +394,53 @@ int dump(const char * source, const char * output, const bool list, const char *
 			}
 			else if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 			{
-				// print solo attachements
-				// const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
-				// const time_t timestampd = sqlite3_column_int64(stmt, 3)
-				// const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp)
-				// if (tm_info.tm_yday != tm_info_tmp.tm_yday)
-				// 	strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
-				// 	dprintf(out_fd, "------%s------\n\n", buffer);
-				// tm_info = tm_info_tmp
-				// strftime(buffer, 30, "%H:%M", &tm_info);
-				// dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
+				void * blob_data = sqlite3_column_blob(stmt, 5);
+				const size_t blob_size = sqlite3_column_bytes(stmt, 5);
+				char ** uuids = NULL;
+				size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size);
+				sqlite3_stmt * stmtu = NULL;
+				if (uuidc)
+				{
+					const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
+					const time_t timestampd = sqlite3_column_int64(stmt, 3);
+					const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
+					if (tm_info.tm_yday != tm_info_tmp.tm_yday)
+					{
+						strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
+						dprintf(out_fd, "------%s------\n\n", buffer);
+					}
+					tm_info = tm_info_tmp;
+					strftime(buffer, 30, "%H:%M", &tm_info);
+					dprintf(out_fd, "%s [ %s ] :\n", buffer, name);
+				}
+				while (uuidc)
+				{
+					--uuidc;
+					if ((sqlite3_prepare_v2(db, "SELECT localRelativeFilePath from model_TSAttachment where uniqueId = ?;", -1, &stmtu, NULL)) != SQLITE_OK)
+					{
+						fprintf(stderr, "Error reading from Attachment table\n");
+						sqlite3_close(db);
+						return 1;
+					}
+					if (sqlite3_bind_text(stmtu, 1, uuids[uuidc], -1, SQLITE_TRANSIENT) != SQLITE_OK)
+					{
+						fprintf(stderr, "Error reading from Interaction table\n");
+						sqlite3_close(db);
+						return 1;
+					}
+					if (sqlite3_step(stmtu) == SQLITE_ROW)
+					{
+						char * path = sqlite3_column_text(stmtu, 0);
+						dprintf(out_fd, "\t<attachment %s>\n", path);
+					}
+					free (uuids[uuidc]);
+					if (!uuidc)
+					{
+						sqlite3_finalize(stmtu);
+						free (uuids);
+						dprintf(out_fd, "\n");
+					}
+				}
 			}
 		}
 	}
