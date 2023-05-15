@@ -157,33 +157,64 @@ const size_t uuid_plister(char *** dest, char * plist, char * plist_end)
 
 // parser for quoted messages hidden in plists
 // this is a strong bodge but its performant and simple
-const size_t quote_plister(char ** dest, char * plist, char * plist_end)
+const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size)
 {
-	while (plist < plist_end)
+	size_t count = 0;
+	plist_t plist = NULL;
+	plist_from_memory(plist_buf, plist_size, &plist);
+	
+	if (plist != NULL)
 	{
-		// 0280 0a10 005f 1020
-		if (*plist == 0x5f)
+		if (plist_get_node_type(plist) == PLIST_DICT)
 		{
-			plist++;
-			if (*plist == '_')
+			plist_dict_iter iter = NULL;
+			plist_dict_new_iter(plist, &iter);
+			
+			while (1)
 			{
-				plist++;
-				plist++;
-				break;
+				plist_t value ;
+				char * key = NULL;
+				
+				plist_dict_next_item(plist, iter, &key, &value);
+				
+				if (!value)
+				{
+					break;
+				}
+				
+				if (plist_get_node_type(value) == PLIST_ARRAY)
+				{
+					plist_array_iter aiter = NULL;
+					plist_array_new_iter(value, &aiter);
+					size_t str_c = 0;
+					while (1)
+					{
+						plist_t avalue;
+						plist_array_next_item(value, aiter, &avalue);
+						
+						if (!avalue) break;
+						
+						if (plist_get_node_type(avalue) == PLIST_STRING)
+						{
+							if (str_c == 1)
+							{
+								char * str;
+								plist_get_string_val(avalue, &str);
+								const size_t str_l = strlen(str);
+								*dest = malloc(str_l * sizeof(char));
+								strcpy(*dest, str);
+								count++;
+								break;
+							}
+							str_c++;
+						}
+					}
+				}
+				if (count) break;
 			}
 		}
-		else
-		{
-			plist++;
-		}
 	}
-	char * ptr = plist;
-	while (ptr <= plist_end && *ptr != 18) ptr++;
-	
-	const size_t len = ptr - plist;
-	*dest = malloc(len * sizeof(char));
-	strncpy(*dest, plist, len);
-	return 1;
+	return count;
 }
 
 int dump(const char * source, const char * output, const bool list, const char * groups)
@@ -367,7 +398,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 					void * blob_data = sqlite3_column_blob(stmt, 6);
 					const size_t blob_size = sqlite3_column_bytes(stmt, 6);
 					char * quote = NULL;
-					if (quote_plister(&quote, blob_data, blob_data + blob_size))
+					if (quote_plister(&quote, blob_data, blob_size))
 					{
 						dprintf(out_fd, "<\"%s\">\n\t", quote);
 					}
