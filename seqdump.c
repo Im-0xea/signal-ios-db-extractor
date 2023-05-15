@@ -173,9 +173,12 @@ void attach_lookup(char ** dest, char * key, sqlite3 * db)
 	if (sqlite3_step(stmtu) == SQLITE_ROW)
 	{
 		char * path = sqlite3_column_text(stmtu, 0);
-		const size_t path_l = strlen(path);
-		*dest = malloc(path_l * sizeof(char));
-		strcpy(*dest, path);
+		if (path)
+		{
+			const size_t path_l = strlen(path);
+			*dest = malloc(path_l * sizeof(char));
+			strcpy(*dest, path);
+		}
 	}
 	sqlite3_finalize(stmtu);
 }
@@ -185,99 +188,101 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 {
 	size_t count = 0;
 	plist_t plist = NULL;
-	plist_from_memory(plist_buf, plist_size, &plist);
+	plist_format_t form = PLIST_FORMAT_BINARY;
+	plist_from_memory(plist_buf, plist_size, &plist, &form);
 	
-	if (plist != NULL)
+	if (plist == NULL || plist_get_node_type(plist) != PLIST_DICT)
 	{
-		if (plist_get_node_type(plist) == PLIST_DICT)
+		return 0;
+	}
+	
+	plist_dict_iter iter = NULL;
+	plist_dict_new_iter(plist, &iter);
+	
+	while (1)
+	{
+		plist_t value;
+		plist_dict_next_item(plist, iter, NULL, &value);
+		
+		if (!value)
 		{
-			plist_dict_iter iter = NULL;
-			plist_dict_new_iter(plist, &iter);
+			break;
+		}
+		
+		if (plist_get_node_type(value) != PLIST_ARRAY)
+		{
+			continue;
+		}
+		
+		plist_array_iter aiter = NULL;
+		plist_array_new_iter(value, &aiter);
+		size_t str_c = 0;
+		bool attach = true;
+		bool dict_checked = false;
+		while (1)
+		{
+			plist_t avalue;
+			plist_array_next_item(value, aiter, &avalue);
 			
-			while (1)
+			if (!avalue) break;
+			
+			if (!dict_checked && plist_get_node_type(avalue) == PLIST_DICT)
 			{
-				plist_t value ;
-				
-				plist_dict_next_item(plist, iter, NULL, &value);
-				
-				if (!value)
+				plist_dict_iter diter = NULL;
+				plist_dict_new_iter(avalue, &diter);
+				plist_t dkey;
+				plist_dict_next_item(avalue, diter, NULL, &dkey);
+				if (strcmp(dkey, "body") != 0)
 				{
-					plist_free(value);
-					break;
+					attach = false;
 				}
-				
-				if (plist_get_node_type(value) == PLIST_ARRAY)
+				//plist_free(dkey)
+				free(diter);
+				dict_checked = true;
+			}
+			else if (plist_get_node_type(avalue) == PLIST_STRING)
+			{
+				if (str_c == 1)
 				{
-					plist_array_iter aiter = NULL;
-					plist_array_new_iter(value, &aiter);
-					size_t str_c = 0;
-					bool attach = true;
-					bool dict_checked = false;
-					while (1)
+					if (!attach)
 					{
-						plist_t avalue;
-						plist_array_next_item(value, aiter, &avalue);
-						
-						if (!avalue) break;
-						
-						if (!dict_checked && plist_get_node_type(avalue) == PLIST_DICT)
+						char * str;
+						plist_get_string_val(avalue, &str);
+						const size_t str_l = strlen(str);
+						if (str)
 						{
-							plist_dict_iter diter = NULL;
-							plist_dict_new_iter(avalue, &diter);
-							plist_t dkey;
-							plist_dict_next_item(avalue, diter, NULL, &dkey);
-							if (strcmp(dkey, "body") != 0)
-							{
-								attach = false;
-							}
-							plist_free(dkey);
-							free(diter);
-							dict_checked = true;
+							*dest = malloc(str_l * sizeof(char));
+							strcpy(*dest, str);
+							//plist_mem_free(str)
+							count++;
 						}
-						else if (plist_get_node_type(avalue) == PLIST_STRING)
-						{
-							if (str_c == 1)
-							{
-								if (!attach)
-								{
-									char * str;
-									plist_get_string_val(avalue, &str);
-									const size_t str_l = strlen(str);
-									if (str)
-									{
-										*dest = str;
-									}
-									count++;
-								}
-								else
-								{
-									char * str;
-									plist_get_string_val(avalue, &str);
-									char * path = NULL;
-									attach_lookup(&path, str, db);
-									if (path)
-									{
-										*dest = path;
-									}
-								}
-								plist_free(avalue);
-								free(aiter);
-								break;
-							}
-							str_c++;
-						}
-						plist_free(avalue);
 					}
-				}
-				plist_free(value);
-				if (count) 
-				{
-					free(iter);
+					else
+					{
+						char * str;
+						plist_get_string_val(avalue, &str);
+						char * path = NULL;
+						attach_lookup(&path, str, db);
+						//plist_mem_free(str)
+						if (path)
+						{
+							*dest = path;
+							count++;
+						}
+					}
 					break;
 				}
+				str_c++;
 			}
 		}
+		free(aiter);
+		if (count) 
+		{
+			break;
+		}
 	}
+	
+	free(iter);
 	plist_free(plist);
 	return count;
 }
@@ -463,11 +468,11 @@ int dump(const char * source, const char * output, const bool list, const char *
 					void * blob_data = sqlite3_column_blob(stmt, 6);
 					const size_t blob_size = sqlite3_column_bytes(stmt, 6);
 					char * quote = NULL;
-					if (quote_plister(&quote, blob_data, blob_size, db))
+					if (quote_plister(&quote, blob_data, blob_size, db) && quote)
 					{
 						dprintf(out_fd, "<\"%s\">\n\t", quote);
+						free(quote);
 					}
-					free(quote);
 				}
 				if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 				{
