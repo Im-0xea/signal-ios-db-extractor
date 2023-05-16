@@ -1,3 +1,10 @@
+CC = cc
+IB = ib
+
+CFLAGS = -g
+
+LIBS = -lplist -lsqlite3
+
 all:
-	ib seqdump.c.ib
-	cc seqdump.c -o seqdump -lsqlite3 -g
+	$(IB) seqdump.c.ib
+	$(CC) seqdump.c -o seqdump $(CFLAGS) $(LIBS)
