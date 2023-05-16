@@ -40,6 +40,8 @@ $ ./seqdump -s db.sql -g Niki
 - libplist ( >= 2.3.0)
 
 ~~~
+$ ./depstrap (you can use this script to install the required version of ib and libplist, this is not recommended but will work in most cases)
+
 $ make
 
 root $ make install (optional)
