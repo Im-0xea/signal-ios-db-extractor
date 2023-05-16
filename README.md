@@ -6,6 +6,13 @@ A tool for dumping Signal history from iOS.
 
 This tool takes the database aquired following [this](https://cight.co/backup-signal-ios-jailbreak/) excellent guide, and dumps it in a Human readable format.
 
+### Usage
+
+Features:
+- list groups and contacts
+- dump chats
+- detect attachments and quotes
+
 ~~~
 $ ./seqdump -s db.sql -l
 Niki
@@ -42,7 +49,7 @@ $ ./seqdump -s db.sql -g Niki
 ~~~
 $ ./depstrap (you can use this script to install the required version of ib and libplist, this is not recommended but will work in most cases)
 
-$ make
+$ make (IB=./ib if installed by depstrap)
 
 root $ make install (optional)
 ~~~
