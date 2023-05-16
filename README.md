@@ -13,7 +13,7 @@ Mom
 Dad
 You
 
-$ ./seqdump -s db.sql -g You
+$ ./seqdump -s db.sql -g Niki
 
 ------06-12-2021------
 
