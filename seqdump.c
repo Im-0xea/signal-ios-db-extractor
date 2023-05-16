@@ -11,6 +11,14 @@
 #include <plist/plist.h>
 
 #define VERSION "0.1"
+/*
+	seqdump
+	
+	TODO:
+		- reply with only a attachement
+		- non-dm groups
+		
+*/
 
 int dump(const char * source, const char * output, const bool list, const char * groups);
 
@@ -217,7 +225,7 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 		plist_array_iter aiter = NULL;
 		plist_array_new_iter(value, &aiter);
 		size_t str_c = 0;
-		bool attach = true;
+		bool attach = false;
 		bool dict_checked = false;
 		while (1)
 		{
@@ -232,11 +240,15 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 				plist_dict_new_iter(avalue, &diter);
 				plist_t dkey;
 				plist_dict_next_item(avalue, diter, NULL, &dkey);
-				if (strcmp(dkey, "body") != 0)
+				plist_t dkeyn;
+				plist_dict_next_item(avalue, diter, NULL, &dkeyn);
+				char * dkeys;
+				plist_dict_get_item_key(dkeyn, &dkeys);
+				if (strcmp(dkeys, "quotedAttachment") == 0)
 				{
-					attach = false;
+					attach = true;
 				}
-				//plist_free(dkey)
+				//plist_mem_free(dkeys)
 				free(diter);
 				dict_checked = true;
 			}
@@ -266,7 +278,9 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 						plist_mem_free(str);
 						if (path)
 						{
-							*dest = path;
+							*dest = malloc((strlen(path) + 12) * sizeof(char));
+							sprintf(*dest, "attachment %s", path);
+							free(path);
 							count++;
 						}
 					}
