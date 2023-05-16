@@ -1,6 +1,6 @@
 # Seqdump
 
-A tool for dumping Signal history from iOS.
+A tool for dumping Signal history from iOS, written in [ib](https://github.com/Nik-Nothing/ibranching) C.
 
 ### Introduction
 

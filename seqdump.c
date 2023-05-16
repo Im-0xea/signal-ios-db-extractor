@@ -19,7 +19,7 @@
 		
 */
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, const char * attach);
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber);
 
 static void help(void)
 {
@@ -68,10 +68,6 @@ int main(const int argc, char ** argv)
 		},
 		
 		{
-			"attachments",  required_argument, 0, 'a'
-		},
-		
-		{
 			0, 0, 0, 0
 		},
 	};
@@ -80,7 +76,6 @@ int main(const int argc, char ** argv)
 	char * source = NULL;
 	char * groups = NULL;
 	char * number = NULL;
-	char * attach = NULL;
 	bool   list   = false;
 	
 	while (1)
@@ -128,9 +123,6 @@ int main(const int argc, char ** argv)
 			case 'g':
 				groups = optarg;
 				continue;
-			case 'a':
-				attach = optarg;
-				continue;
 		}
 	}
 	
@@ -140,7 +132,7 @@ int main(const int argc, char ** argv)
 		return 1;
 	}
 	
-	dump(source, output, list, groups, number, attach);
+	dump(source, output, list, groups, number);
 }
 
 const char * lookup(const char ** table, const char * key, const size_t limit)
@@ -214,7 +206,7 @@ void attach_lookup(char ** dest, char * key, sqlite3 * db)
 		{
 			const size_t path_l = strlen(path);
 			*dest = malloc((path_l + 1) * sizeof(char));
-			strcpy(*dest, path);
+			strcpy(*dest, path + 1);
 		}
 	}
 	sqlite3_finalize(stmtu);
@@ -308,7 +300,7 @@ const size_t quote_plister(char ** dest, const char * plist_buf, size_t plist_si
 						if (path)
 						{
 							*dest = malloc((strlen(path) + 12) * sizeof(char));
-							sprintf(*dest, "attachment %s", path);
+							sprintf(*dest, "attachment: %s", path);
 							free(path);
 							count++;
 						}
@@ -330,7 +322,7 @@ const size_t quote_plister(char ** dest, const char * plist_buf, size_t plist_si
 	return count;
 }
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, const char * attach)
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber)
 {
 	// either set output file descriptor to stdout or open defined output as fd
 	int out_fd = 1;
@@ -541,7 +533,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 						free(uuids[uuidc]);
 						if (path)
 						{
-							dprintf(out_fd, "<attachment %s>\n\t", path);
+							dprintf(out_fd, "<attachment: %s>\n\t", path);
 						}
 						free(path);
 						if (!uuidc)
@@ -612,7 +604,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 					attach_lookup(&path, uuids[uuidc], db);
 					if (path)
 					{
-						dprintf(out_fd, "\t<attachment %s>\n", path);
+						dprintf(out_fd, "\t<attachment: %s>\n", path);
 					}
 					free (uuids[uuidc]);
 					free (path);
