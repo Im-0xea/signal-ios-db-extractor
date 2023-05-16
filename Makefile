@@ -3,7 +3,7 @@ IB = ib
 
 CFLAGS = -g
 
-LIBS = -lplist -lsqlite3
+LIBS = -lplist-2.0 -lsqlite3
 
 all:
 	$(IB) seqdump.c.ib

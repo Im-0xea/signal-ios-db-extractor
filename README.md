@@ -37,7 +37,7 @@ $ ./seqdump -s db.sql -g You
 #### Dependencies:
 - [ib](https://github.com/Niki-Nu/ibranching)
 - sqlite3
-- libplist
+- libplist ( >= 2.3.0)
 
 ~~~
 $ make

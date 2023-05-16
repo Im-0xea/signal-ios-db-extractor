@@ -176,7 +176,7 @@ void attach_lookup(char ** dest, char * key, sqlite3 * db)
 		if (path)
 		{
 			const size_t path_l = strlen(path);
-			*dest = malloc(path_l * sizeof(char));
+			*dest = malloc((path_l + 1) * sizeof(char));
 			strcpy(*dest, path);
 		}
 	}
@@ -251,9 +251,9 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 						const size_t str_l = strlen(str);
 						if (str)
 						{
-							*dest = malloc(str_l * sizeof(char));
+							*dest = malloc((str_l + 1) * sizeof(char));
 							strcpy(*dest, str);
-							//plist_mem_free(str)
+							plist_mem_free(str);
 							count++;
 						}
 					}
@@ -263,7 +263,7 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 						plist_get_string_val(avalue, &str);
 						char * path = NULL;
 						attach_lookup(&path, str, db);
-						//plist_mem_free(str)
+						plist_mem_free(str);
 						if (path)
 						{
 							*dest = path;
@@ -308,21 +308,24 @@ int dump(const char * source, const char * output, const bool list, const char *
 		fprintf(stderr, "Error opening db\n");
 		return 1;
 	}
-	sqlite3_stmt * stmt;
 	
 	// get profile phone number
 	// I decided to just take the first Recipients phone number
 	// as this consistently returns your own
+	sqlite3_stmt * an_stmt;
 	char * acc_number;
-	if (sqlite3_prepare_v2(db, "SELECT recipientPhoneNumber FROM model_SignalRecipient WHERE id = 1;", -1, &stmt, NULL) != SQLITE_OK)
+	if (sqlite3_prepare_v2(db, "SELECT recipientPhoneNumber FROM model_SignalRecipient WHERE id = 1;", -1, &an_stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading Account Phone number\n");
 		sqlite3_close(db);
 		return 1;
 	}
-	if (sqlite3_step(stmt) == SQLITE_ROW)
+	if (sqlite3_step(an_stmt) == SQLITE_ROW)
 	{
-		acc_number = (char*)sqlite3_column_text(stmt, 0);
+		const char * num = sqlite3_column_text(an_stmt, 0);
+		const size_t num_l = strlen(num);
+		acc_number = malloc((num_l + 1) * sizeof(char));
+		strcpy(acc_number, num);
 	}
 	else
 	{
@@ -330,12 +333,15 @@ int dump(const char * source, const char * output, const bool list, const char *
 		sqlite3_close(db);
 		return 1;
 	}
+	sqlite3_finalize(an_stmt);
+	
 	
 	// create profile lookup table
 	// this table contains [0] Profile Name [1] Phone number
 	// allowing you to find the name of the sender of a message
 	// and looking up the name associated with a dm group
-	if (sqlite3_prepare_v2(db, "SELECT profileName, recipientPhoneNumber from model_OWSUserProfile;", -1, &stmt, NULL) != SQLITE_OK)
+	sqlite3_stmt * pft_stmt;
+	if (sqlite3_prepare_v2(db, "SELECT profileName, recipientPhoneNumber from model_OWSUserProfile;", -1, &pft_stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error Parsing Profile Table\n");
 		sqlite3_close(db);
@@ -344,11 +350,11 @@ int dump(const char * source, const char * output, const bool list, const char *
 	char ** name_table = malloc(10 * sizeof(char *));
 	size_t name_table_pos = 0;
 	size_t name_table_last_malloc = 0;
-	while (sqlite3_step(stmt) == SQLITE_ROW)
+	while (sqlite3_step(pft_stmt) == SQLITE_ROW)
 	{
-		if (sqlite3_column_type(stmt, 0) != SQLITE_NULL && (sqlite3_column_type(stmt, 1) != SQLITE_NULL || name_table_pos == 0))
+		if (sqlite3_column_type(pft_stmt, 0) != SQLITE_NULL && (sqlite3_column_type(pft_stmt, 1) != SQLITE_NULL || name_table_pos == 0))
 		{
-			const unsigned char * name = sqlite3_column_text(stmt, 0);
+			const unsigned char * name = sqlite3_column_text(pft_stmt, 0);
 			unsigned char * number = NULL;
 			if (name_table_last_malloc + 10 <= name_table_pos)
 			{
@@ -363,18 +369,20 @@ int dump(const char * source, const char * output, const bool list, const char *
 			}
 			else
 			{
-				number = (unsigned char *) sqlite3_column_text(stmt, 1);
+				number = (unsigned char *) sqlite3_column_text(pft_stmt, 1);
 			}
 			strcpy(name_table[name_table_pos], name);
 			strcpy(name_table[name_table_pos + 1], number);
 			name_table_pos += 2;
 		}
 	}
+	sqlite3_finalize(pft_stmt);
 	
 	// create group lookup table
 	// this table contains [0] Group Name [1] Group ID
 	// allowing you to associate messages with group names
-	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber from model_TSThread;", -1, &stmt, NULL) != SQLITE_OK)
+	sqlite3_stmt * gt_stmt;
+	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber from model_TSThread;", -1, &gt_stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error Parsing Profile Table\n");
 		sqlite3_close(db);
@@ -383,12 +391,12 @@ int dump(const char * source, const char * output, const bool list, const char *
 	char ** group_table = malloc(10 * sizeof(char *));
 	size_t group_table_pos = 0;
 	size_t group_table_last_malloc = 0;
-	while (sqlite3_step(stmt) == SQLITE_ROW)
+	while (sqlite3_step(gt_stmt) == SQLITE_ROW)
 	{
-		if (sqlite3_column_type(stmt, 0) != SQLITE_NULL && sqlite3_column_type(stmt, 1) != SQLITE_NULL )
+		if (sqlite3_column_type(gt_stmt, 0) != SQLITE_NULL && sqlite3_column_type(gt_stmt, 1) != SQLITE_NULL )
 		{
-			const unsigned char * group_id = sqlite3_column_text(stmt, 0);
-			const unsigned char * number = sqlite3_column_text(stmt, 1);
+			const unsigned char * group_id = sqlite3_column_text(gt_stmt, 0);
+			const unsigned char * number = sqlite3_column_text(gt_stmt, 1);
 			const char * name = lookup((const char **) name_table, number, name_table_pos);
 			if (name)
 			{
@@ -410,6 +418,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 			}
 		}
 	}
+	sqlite3_finalize(gt_stmt);
 	
 	if (list)
 	{
@@ -418,6 +427,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	
 	// message loop
 	// loops over all entries of the interaction table and prints them accordingly
+	sqlite3_stmt * stmt;
 	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage from model_TSInteraction;", -1, &stmt, &tail)) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading from Interaction table\n");
@@ -601,6 +611,8 @@ int dump(const char * source, const char * output, const bool list, const char *
 	{
 		close(out_fd);
 	}
+	
+	free(acc_number);
 	
 	return 0;
 }
