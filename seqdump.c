@@ -15,12 +15,11 @@
 	seqdump
 	
 	TODO:
-		- reply with only a attachement
 		- non-dm groups
 		
 */
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber);
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, const char * attach);
 
 static void help(void)
 {
@@ -37,35 +36,39 @@ static void help(void)
 
 int main(const int argc, char ** argv)
 {
-	const char * short_options = "hVs:o:c:ln::g:";
+	const char * short_options = "hVs:o:c:ln::g:a:";
 	const struct option long_option[] =
 	{
 		{
-			"help",    no_argument,       0, 'h'
+			"help",         no_argument,       0, 'h'
 		},
 		
 		{
-			"version", no_argument,       0, 'V'
+			"version",      no_argument,       0, 'V'
 		},
 		
 		{
-			"sql",     required_argument, 0, 's'
+			"sql",          required_argument, 0, 's'
 		},
 		
 		{
-			"output",  required_argument, 0, 'o'
+			"output",       required_argument, 0, 'o'
 		},
 		
 		{
-			"list",    no_argument,       0, 'l'
+			"list",         no_argument,       0, 'l'
 		},
 		
 		{
-			"number",  optional_argument, 0, 'n'
+			"number",       optional_argument, 0, 'n'
 		},
 		
 		{
-			"groups",  required_argument, 0, 'g'
+			"groups",       required_argument, 0, 'g'
+		},
+		
+		{
+			"attachments",  required_argument, 0, 'a'
 		},
 		
 		{
@@ -77,6 +80,7 @@ int main(const int argc, char ** argv)
 	char * source = NULL;
 	char * groups = NULL;
 	char * number = NULL;
+	char * attach = NULL;
 	bool   list   = false;
 	
 	while (1)
@@ -118,11 +122,14 @@ int main(const int argc, char ** argv)
 				}
 				else
 				{
-					number = 1;
+					number = (char *) 1;
 				}
 				continue;
 			case 'g':
 				groups = optarg;
+				continue;
+			case 'a':
+				attach = optarg;
 				continue;
 		}
 	}
@@ -133,7 +140,7 @@ int main(const int argc, char ** argv)
 		return 1;
 	}
 	
-	dump(source, output, list, groups, number);
+	dump(source, output, list, groups, number, attach);
 }
 
 const char * lookup(const char ** table, const char * key, const size_t limit)
@@ -157,7 +164,7 @@ const char * lookup(const char ** table, const char * key, const size_t limit)
 
 // parser for attachement uuids hidden in plists
 // this is a strong bodge but its performant and simple
-const size_t uuid_plister(char *** dest, char * plist, char * plist_end)
+const size_t uuid_plister(char *** dest, const char * plist, const char * plist_end)
 {
 	size_t count = 0;
 	size_t last_malloc = 10;
@@ -202,7 +209,7 @@ void attach_lookup(char ** dest, char * key, sqlite3 * db)
 	}
 	if (sqlite3_step(stmtu) == SQLITE_ROW)
 	{
-		char * path = sqlite3_column_text(stmtu, 0);
+		const char * path = sqlite3_column_text(stmtu, 0);
 		if (path)
 		{
 			const size_t path_l = strlen(path);
@@ -214,7 +221,7 @@ void attach_lookup(char ** dest, char * key, sqlite3 * db)
 }
 
 // parser for quoted messages hidden in plists
-const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sqlite3 * db)
+const size_t quote_plister(char ** dest, const char * plist_buf, size_t plist_size, sqlite3 * db)
 {
 	size_t count = 0;
 	plist_t plist = NULL;
@@ -270,7 +277,7 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 				{
 					attach = true;
 				}
-				//plist_mem_free(dkeys)
+				plist_mem_free(dkeys);
 				free(diter);
 				dict_checked = true;
 			}
@@ -323,7 +330,7 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 	return count;
 }
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber)
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, const char * attach)
 {
 	// either set output file descriptor to stdout or open defined output as fd
 	int out_fd = 1;
@@ -403,7 +410,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 			{
 				number = (unsigned char *) sqlite3_column_text(pft_stmt, 1);
 			}
-			if ((nnumber > 1 && strcmp(name, nnumber) == 0) || nnumber == 1)
+			if ((nnumber > (char *) 1 && strcmp(name, nnumber) == 0) || nnumber == (char *) 1)
 			{
 				dprintf(out_fd, "%s: %s\n", name, number);
 			}
@@ -456,7 +463,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	}
 	sqlite3_finalize(gt_stmt);
 	
-	if (list || nnumber != NULL || nnumber == 1)
+	if (list || nnumber != NULL || nnumber == (char *) 1)
 	{
 		goto close;
 	}
@@ -511,7 +518,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 				dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
 				if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
 				{
-					void * blob_data = sqlite3_column_blob(stmt, 6);
+					const void * blob_data = sqlite3_column_blob(stmt, 6);
 					const size_t blob_size = sqlite3_column_bytes(stmt, 6);
 					char * quote = NULL;
 					if (quote_plister(&quote, blob_data, blob_size, db) && quote)
@@ -522,7 +529,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 				}
 				if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 				{
-					void * blob_data = sqlite3_column_blob(stmt, 5);
+					const void * blob_data = sqlite3_column_blob(stmt, 5);
 					const size_t blob_size = sqlite3_column_bytes(stmt, 5);
 					char ** uuids = NULL;
 					size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size);
@@ -571,7 +578,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 			{
 				if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
 				{
-					void * blob_data = sqlite3_column_blob(stmt, 6);
+					const void * blob_data = sqlite3_column_blob(stmt, 6);
 					const size_t blob_size = sqlite3_column_bytes(stmt, 6);
 					char * quote = NULL;
 					if (quote_plister(&quote, blob_data, blob_size, db) && quote)
@@ -580,7 +587,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 						free(quote);
 					}
 				}
-				void * blob_data = sqlite3_column_blob(stmt, 5);
+				const void * blob_data = sqlite3_column_blob(stmt, 5);
 				const size_t blob_size = sqlite3_column_bytes(stmt, 5);
 				char ** uuids = NULL;
 				size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size);

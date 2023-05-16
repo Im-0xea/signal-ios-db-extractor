@@ -10,8 +10,7 @@ This tool takes the database aquired following [this](https://cight.co/backup-si
 
 Features:
 - list groups and contacts
-- dump chats
-- detect attachments and quotes
+- dump chats (detects calls, attachments and quotes)
 
 ~~~
 $ ./seqdump -s db.sql -l
