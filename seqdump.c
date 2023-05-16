@@ -20,7 +20,7 @@
 		
 */
 
-int dump(const char * source, const char * output, const bool list, const char * groups);
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber);
 
 static void help(void)
 {
@@ -37,7 +37,7 @@ static void help(void)
 
 int main(const int argc, char ** argv)
 {
-	const char * short_options = "hVs:o:c:lg:";
+	const char * short_options = "hVs:o:c:ln::g:";
 	const struct option long_option[] =
 	{
 		{
@@ -61,6 +61,10 @@ int main(const int argc, char ** argv)
 		},
 		
 		{
+			"number",  optional_argument, 0, 'n'
+		},
+		
+		{
 			"groups",  required_argument, 0, 'g'
 		},
 		
@@ -72,6 +76,7 @@ int main(const int argc, char ** argv)
 	char * output = NULL;
 	char * source = NULL;
 	char * groups = NULL;
+	char * number = NULL;
 	bool   list   = false;
 	
 	while (1)
@@ -99,6 +104,23 @@ int main(const int argc, char ** argv)
 			case 'l':
 				list = true;
 				continue;
+			case 'n':
+				if (optarg != NULL)
+				{
+					if (*optarg == '=')
+					{
+						number = optarg + 1;
+					}
+					else
+					{
+						number = optarg;
+					}
+				}
+				else
+				{
+					number = 1;
+				}
+				continue;
 			case 'g':
 				groups = optarg;
 				continue;
@@ -111,7 +133,7 @@ int main(const int argc, char ** argv)
 		return 1;
 	}
 	
-	dump(source, output, list, groups);
+	dump(source, output, list, groups, number);
 }
 
 const char * lookup(const char ** table, const char * key, const size_t limit)
@@ -165,7 +187,7 @@ const size_t uuid_plister(char *** dest, char * plist, char * plist_end)
 
 void attach_lookup(char ** dest, char * key, sqlite3 * db)
 {
-	sqlite3_stmt * stmtu;
+	sqlite3_stmt * stmtu = NULL;
 	if ((sqlite3_prepare_v2(db, "SELECT localRelativeFilePath from model_TSAttachment where uniqueId = ?;", -1, &stmtu, NULL)) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading from Attachment table\n");
@@ -301,22 +323,18 @@ const size_t quote_plister(char ** dest, char * plist_buf, size_t plist_size, sq
 	return count;
 }
 
-int dump(const char * source, const char * output, const bool list, const char * groups)
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber)
 {
 	// either set output file descriptor to stdout or open defined output as fd
-	int out_fd;
-	if (output == NULL)
-	{
-		out_fd = 1;
-	}
-	else
+	int out_fd = 1;
+	if (output != NULL)
 	{
 		out_fd = open(output, O_WRONLY | O_CREAT, 0644);
 	}
 	
 	// open sqlite3 database
 	sqlite3 * db;
-	const char * tail;
+	const char * tail = NULL;
 	if ((sqlite3_open(source, &db)) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error opening db\n");
@@ -326,8 +344,8 @@ int dump(const char * source, const char * output, const bool list, const char *
 	// get profile phone number
 	// I decided to just take the first Recipients phone number
 	// as this consistently returns your own
-	sqlite3_stmt * an_stmt;
-	char * acc_number;
+	sqlite3_stmt * an_stmt = NULL;
+	char * acc_number = NULL;
 	if (sqlite3_prepare_v2(db, "SELECT recipientPhoneNumber FROM model_SignalRecipient WHERE id = 1;", -1, &an_stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading Account Phone number\n");
@@ -385,6 +403,10 @@ int dump(const char * source, const char * output, const bool list, const char *
 			{
 				number = (unsigned char *) sqlite3_column_text(pft_stmt, 1);
 			}
+			if ((nnumber > 1 && strcmp(name, nnumber) == 0) || nnumber == 1)
+			{
+				dprintf(out_fd, "%s: %s\n", name, number);
+			}
 			strcpy(name_table[name_table_pos], name);
 			strcpy(name_table[name_table_pos + 1], number);
 			name_table_pos += 2;
@@ -395,7 +417,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	// create group lookup table
 	// this table contains [0] Group Name [1] Group ID
 	// allowing you to associate messages with group names
-	sqlite3_stmt * gt_stmt;
+	sqlite3_stmt * gt_stmt = NULL;
 	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber from model_TSThread;", -1, &gt_stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error Parsing Profile Table\n");
@@ -434,7 +456,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	}
 	sqlite3_finalize(gt_stmt);
 	
-	if (list)
+	if (list || nnumber != NULL || nnumber == 1)
 	{
 		goto close;
 	}
@@ -458,7 +480,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		const unsigned char * group = lookup((const char **) group_table, record, group_table_pos);
 		if (!groups || group && strcmp(group, groups) == 0)
 		{
-			unsigned char * author;
+			unsigned char * author = NULL;
 			// small hack - the authorPhoneNumber is Null if its from you
 			// so this is why we needed to safe it before
 			if (sqlite3_column_type(stmt, 2) == SQLITE_NULL)
@@ -547,6 +569,17 @@ int dump(const char * source, const char * output, const bool list, const char *
 			}
 			else if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 			{
+				if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
+				{
+					void * blob_data = sqlite3_column_blob(stmt, 6);
+					const size_t blob_size = sqlite3_column_bytes(stmt, 6);
+					char * quote = NULL;
+					if (quote_plister(&quote, blob_data, blob_size, db) && quote)
+					{
+						dprintf(out_fd, "<\"%s\">\n\t", quote);
+						free(quote);
+					}
+				}
 				void * blob_data = sqlite3_column_blob(stmt, 5);
 				const size_t blob_size = sqlite3_column_bytes(stmt, 5);
 				char ** uuids = NULL;
@@ -586,9 +619,8 @@ int dump(const char * source, const char * output, const bool list, const char *
 		}
 	}
 	
-	close:
-	
 	sqlite3_finalize(stmt);
+	close:
 	sqlite3_close(db);
 	
 	// free name_table
@@ -626,7 +658,10 @@ int dump(const char * source, const char * output, const bool list, const char *
 		close(out_fd);
 	}
 	
-	free(acc_number);
+	if (acc_number)
+	{
+		free(acc_number);
+	}
 	
 	return 0;
 }
