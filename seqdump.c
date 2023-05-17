@@ -19,6 +19,42 @@
 		
 */
 
+const char * html_header = \
+"<!DOCTYPE html>\n" \
+"<html>\n" \
+"	<head>\n" \
+"		<meta charset=\"UTF-8\">\n" \
+"		<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" \
+"		<link rel=\"stylesheet\" href=\"style.css\">\n" \
+"		<title>Signal IOS Dump</title>\n" \
+"	</head>\n" \
+"	<body>\n" \
+"		<div class=\"message-container\">";
+const char * html_footer = \
+"		</div>\n" \
+"	</body>\n" \
+"</html>\n";
+const char * html_dater = \
+"			<div class=\"dater\">\n" \
+"				%s\n" \
+"			</div>\n";
+const char * html_message = \
+"			<div class=\"message message-text %s-message\">\n" \
+"				<div class=\"message-content\">\n" \
+"					%s\n" \
+"				</div>\n" \
+"				<div class=\"time\">\n" \
+"					%s\n" \
+"				</div>\n" \
+"			</div>\n";
+const char * html_image = \
+"			<div class=\"message %s-message image\">\n" \
+"				<img src=\"Attachments/%s\" alt=\"image\">\n" \
+"			</div>\n";
+
+
+
+
 int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber);
 
 static void help(void)
@@ -187,7 +223,7 @@ const size_t uuid_plister(char *** dest, const char * plist, const char * plist_
 void attach_lookup(char ** dest, char * key, sqlite3 * db)
 {
 	sqlite3_stmt * stmtu = NULL;
-	if ((sqlite3_prepare_v2(db, "SELECT localRelativeFilePath from model_TSAttachment where uniqueId = ?;", -1, &stmtu, NULL)) != SQLITE_OK)
+	if ((sqlite3_prepare_v2(db, "SELECT localRelativeFilePath FROM model_TSAttachment WHERE uniqueId = ?;", -1, &stmtu, NULL)) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading from Attachment table\n");
 		sqlite3_close(db);
@@ -372,7 +408,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	// allowing you to find the name of the sender of a message
 	// and looking up the name associated with a dm group
 	sqlite3_stmt * pft_stmt;
-	if (sqlite3_prepare_v2(db, "SELECT profileName, recipientPhoneNumber from model_OWSUserProfile;", -1, &pft_stmt, NULL) != SQLITE_OK)
+	if (sqlite3_prepare_v2(db, "SELECT profileName, recipientPhoneNumber FROM model_OWSUserProfile;", -1, &pft_stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error Parsing Profile Table\n");
 		sqlite3_close(db);
@@ -417,7 +453,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	// this table contains [0] Group Name [1] Group ID
 	// allowing you to associate messages with group names
 	sqlite3_stmt * gt_stmt = NULL;
-	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber from model_TSThread;", -1, &gt_stmt, NULL) != SQLITE_OK)
+	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber FROM model_TSThread;", -1, &gt_stmt, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error Parsing Profile Table\n");
 		sqlite3_close(db);
@@ -462,8 +498,10 @@ int dump(const char * source, const char * output, const bool list, const char *
 	
 	// message loop
 	// loops over all entries of the interaction table and prints them accordingly
+	dprintf(out_fd, "%s\n", html_header);
+	
 	sqlite3_stmt * stmt;
-	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage from model_TSInteraction;", -1, &stmt, &tail)) != SQLITE_OK)
+	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage FROM model_TSInteraction ORDER BY timestamp ASC;", -1, &stmt, &tail)) != SQLITE_OK)
 	{
 		fprintf(stderr, "Error reading from Interaction table\n");
 		sqlite3_close(db);
@@ -480,11 +518,13 @@ int dump(const char * source, const char * output, const bool list, const char *
 		if (!groups || group && strcmp(group, groups) == 0)
 		{
 			unsigned char * author = NULL;
+			bool you = false;
 			// small hack - the authorPhoneNumber is Null if its from you
 			// so this is why we needed to safe it before
 			if (sqlite3_column_type(stmt, 2) == SQLITE_NULL)
 			{
 				author = acc_number;
+				you = true;
 			}
 			else
 			{
@@ -501,13 +541,13 @@ int dump(const char * source, const char * output, const bool list, const char *
 				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
 				if (tm_info.tm_yday != tm_info_tmp.tm_yday)
 				{
-					strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
-					dprintf(out_fd, "------%s------\n\n", buffer);
+					strftime(buffer, 30, "%e, %b %Y", &tm_info_tmp);
+					dprintf(out_fd, html_dater, buffer);
 				}
 				tm_info = tm_info_tmp;
 				strftime(buffer, 30, "%H:%M", &tm_info);
 				const unsigned char * body = sqlite3_column_text(stmt, 0);
-				dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
+				//dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
 				if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
 				{
 					const void * blob_data = sqlite3_column_blob(stmt, 6);
@@ -515,7 +555,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 					char * quote = NULL;
 					if (quote_plister(&quote, blob_data, blob_size, db) && quote)
 					{
-						dprintf(out_fd, "<\"%s\">\n\t", quote);
+						//dprintf(out_fd, "<\"%s\">\n\t", quote);
 						free(quote);
 					}
 				}
@@ -533,7 +573,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 						free(uuids[uuidc]);
 						if (path)
 						{
-							dprintf(out_fd, "<attachment: %s>\n\t", path);
+							dprintf(out_fd, html_image, you ? "right" : "left", path);
 						}
 						free(path);
 						if (!uuidc)
@@ -543,7 +583,8 @@ int dump(const char * source, const char * output, const bool list, const char *
 					}
 					
 				}
-				dprintf(out_fd, "%s\n\n", body);
+				//dprintf(out_fd, "%s\n\n", body);
+				dprintf(out_fd, html_message, you ? "right" : "left", body, buffer);
 			}
 			else if (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
 			{
@@ -553,13 +594,13 @@ int dump(const char * source, const char * output, const bool list, const char *
 				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
 				if (tm_info.tm_yday != tm_info_tmp.tm_yday)
 				{
-					strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
-					dprintf(out_fd, "------%s------\n\n", buffer);
+					strftime(buffer, 30, "%e, %b %Y", &tm_info_tmp);
+					dprintf(out_fd, html_dater, buffer);
 				}
 				tm_info = tm_info_tmp;
 				strftime(buffer, 30, "%H:%M", &tm_info);
-				dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
-				dprintf(out_fd, "<%s voice call>\n\n", call == 2  ? "Outgoing" : \
+				//dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
+				//dprintf(out_fd, "<%s voice call>\n\n", call == 2  ? "Outgoing" : \
 				                                       call == 1  ? "Incomming" : \
 				                                       call == 8  ? "Unanswered" : \
 				                                       call == 12 ? "Missed call while on Do not disturb" : \
@@ -575,7 +616,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 					char * quote = NULL;
 					if (quote_plister(&quote, blob_data, blob_size, db) && quote)
 					{
-						dprintf(out_fd, "<\"%s\">\n\t", quote);
+						//dprintf(out_fd, "<\"%s\">\n\t", quote);
 						free(quote);
 					}
 				}
@@ -590,12 +631,12 @@ int dump(const char * source, const char * output, const bool list, const char *
 					const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
 					if (tm_info.tm_yday != tm_info_tmp.tm_yday)
 					{
-						strftime(buffer, 30, "%d-%m-%Y", &tm_info_tmp);
-						dprintf(out_fd, "------%s------\n\n", buffer);
+						strftime(buffer, 30, "%e, %b %Y", &tm_info_tmp);
+						dprintf(out_fd, html_dater, buffer);
 					}
 					tm_info = tm_info_tmp;
 					strftime(buffer, 30, "%H:%M", &tm_info);
-					dprintf(out_fd, "%s [ %s ] :\n", buffer, name);
+					//dprintf(out_fd, "%s [ %s ] :\n", buffer, name);
 				}
 				while (uuidc)
 				{
@@ -604,14 +645,14 @@ int dump(const char * source, const char * output, const bool list, const char *
 					attach_lookup(&path, uuids[uuidc], db);
 					if (path)
 					{
-						dprintf(out_fd, "\t<attachment: %s>\n", path);
+						//dprintf(out_fd, "\t<attachment: %s>\n", path);
 					}
 					free (uuids[uuidc]);
 					free (path);
 					if (!uuidc)
 					{
 						free (uuids);
-						dprintf(out_fd, "\n");
+						//dprintf(out_fd, "\n");
 					}
 				}
 			}
@@ -621,6 +662,9 @@ int dump(const char * source, const char * output, const bool list, const char *
 	sqlite3_finalize(stmt);
 	close:
 	sqlite3_close(db);
+	
+	dprintf(out_fd, "%s\n", html_footer);
+	
 	
 	// free name_table
 	while (1)
