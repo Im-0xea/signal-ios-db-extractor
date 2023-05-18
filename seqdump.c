@@ -10,7 +10,7 @@
 #include <sqlite3.h>
 #include <plist/plist.h>
 
-#define VERSION "0.1"
+#define VERSION "0.2"
 /*
 	seqdump
 	
@@ -20,6 +20,119 @@
 */
 
 #include "html.h"
+
+typedef enum message_type
+{
+	none,
+	text,
+	attach,
+	call
+}
+msg_type;
+
+typedef struct message
+{
+	time_t timestamp;
+	time_t last_timestamp;
+	msg_type type;
+	msg_type type_quote;
+	int call_type;
+	size_t body_max;
+	size_t attachments_max;
+	size_t quote_max;
+	char * author;
+	char * last_author;
+	char * body;
+	char * attachments;
+	char * quote;
+}
+msg;
+
+void html_print(int fd, msg * last_msg, const char * next_author, const char * you)
+{
+	if (!last_msg->type)
+	{
+		return;
+	}
+	char time_buffer[30];
+	const struct tm tm_info      = *gmtime((time_t *) &last_msg->last_timestamp);
+	const struct tm tm_info_last = *gmtime((time_t *) &last_msg->timestamp);
+	if (tm_info.tm_yday != tm_info_last.tm_yday)
+	{
+		strftime(time_buffer, 30, "%e, %b %Y", &tm_info);
+		dprintf(fd, html_dater, time_buffer);
+	}
+	strftime(time_buffer, 30, "%H:%M", &tm_info);
+	
+	if (last_msg->type == call)
+	{
+		char calli[64];
+		sprintf(calli, "&#128222 %s voice call · ", last_msg->call_type == 2  ? "Outgoing" : \
+		                                            last_msg->call_type == 1  ? "Incoming" : \
+		                                            last_msg->call_type == 8  ? "Unanswered" : \
+		                                            last_msg->call_type == 12 ? "Missed call while on Do not disturb" : \
+		                                            last_msg->call_type == 7  ? "Declied" : \
+		                                            last_msg->call_type == 3  ? "Missed" : "");
+		strcat(calli, time_buffer);
+		dprintf(fd, html_dater, calli);
+		return;
+	}
+	
+	
+	char * dir;
+	if (strcmp(last_msg->author, last_msg->last_author) == 0)
+	{
+		if (strcmp(last_msg->author, next_author) == 0)
+		{
+			dir = "middle";
+		}
+		else
+		{
+			dir = "bottom";
+		}
+	}
+	else
+	{
+		if (strcmp(last_msg->author, next_author) == 0)
+		{
+			dir = "top";
+		}
+		else
+		{
+			dir = "standalone";
+		}
+	}
+	char lor[16];
+	if (strcmp(last_msg->author, you) == 0)
+	{
+		strcpy(lor, "right");
+	}
+	else
+	{
+		strcpy(lor, "left");
+	}
+	dprintf(fd, html_message_start, lor, dir);
+	
+	char * attach_ptr = last_msg->attachments;
+	while(1)
+	{
+		if (*attach_ptr == '\0')
+		{
+			break;
+		}
+		char * next_ptr = strchr(attach_ptr, '|');
+		if (!next_ptr) break;
+		*next_ptr = '\0';
+		dprintf(fd, html_image, attach_ptr);
+		attach_ptr = next_ptr + 1;
+	}
+	
+	if (last_msg->type == text)
+	{
+		dprintf(fd, html_body, last_msg->body, time_buffer);
+	}
+	dprintf(fd, "%s", html_message_end);
+}
 
 int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber);
 
@@ -165,8 +278,9 @@ const char * lookup(const char ** table, const char * key, const size_t limit)
 
 // parser for attachement uuids hidden in plists
 // this is a strong bodge but its performant and simple
-const size_t uuid_plister(char *** dest, const char * plist, const char * plist_end)
+const size_t uuid_plister(char *** dest, const char * plist, const size_t plist_size)
 {
+	const char * plist_end = plist + plist_size;
 	size_t count = 0;
 	size_t last_malloc = 10;
 	while (plist + 37 <= plist_end)
@@ -332,7 +446,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	int out_fd = 1;
 	if (output != NULL)
 	{
-		out_fd = open(output, O_WRONLY | O_CREAT, 0644);
+		out_fd = open(output, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	}
 	
 	sqlite3 * db;
@@ -416,6 +530,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	}
 	char ** group_table = malloc(10 * sizeof(char *));
 	size_t group_table_pos = 0;
+	char * group;
 	size_t group_table_last_malloc = 0;
 	while (sqlite3_step(gt_stmt) == SQLITE_ROW)
 	{
@@ -439,6 +554,12 @@ int dump(const char * source, const char * output, const bool list, const char *
 				group_table[group_table_pos] = malloc(64);
 				group_table[group_table_pos + 1] = malloc(64);
 				strcpy(group_table[group_table_pos], name);
+				if (strcmp(name, groups) == 0)
+				{
+					group = malloc(strlen(group_id) + 1);
+					strcpy(group, group_id);
+					
+				}
 				strcpy(group_table[group_table_pos + 1], group_id);
 				group_table_pos += 2;
 			}
@@ -453,81 +574,75 @@ int dump(const char * source, const char * output, const bool list, const char *
 	
 	dprintf(out_fd, "%s\n", html_header);
 	
-	// loops over all entries of the interaction table and prints them accordingly
+	// loops over all message in the target thread
 	sqlite3_stmt * stmt;
-	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage FROM model_TSInteraction;", -1, &stmt, NULL)) != SQLITE_OK)
+	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage FROM model_TSInteraction WHERE uniqueThreadId = ? ORDER BY id;", -1, &stmt, NULL)) != SQLITE_OK)
+	{
+		sql_error(db, "Interaction table");
+	}
+	if (sqlite3_bind_text(stmt, 1, group, -1, SQLITE_TRANSIENT) != SQLITE_OK)
 	{
 		sql_error(db, "Interaction table");
 	}
 	
-	char * last_num = malloc(32);
-	last_num[0] = '\0';
-	const time_t unixstart = 0;
-	struct tm tm_info = *gmtime(&unixstart);
+	msg last_msg =
+	{
+		.timestamp = 0,
+		.type            = none,
+		.type_quote      = none,
+		.body_max        = 128,
+		.attachments_max = 128,
+		.quote_max       = 128,
+		.author          = malloc(128),
+		.last_author     = malloc(128),
+		.body            = malloc(128),
+		.attachments     = malloc(128),
+		.quote           = NULL,
+		
+	};
 	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
-		const int type = (sqlite3_column_type(stmt, 0) != SQLITE_NULL) ? 1 : \
-		                 (sqlite3_column_type(stmt, 4) != SQLITE_NULL) ? 2 : \
-		                 (sqlite3_column_type(stmt, 5) != SQLITE_NULL) ? 3 : 0;
+		const msg_type type = (sqlite3_column_type(stmt, 0) != SQLITE_NULL) ? text : \
+		                      (sqlite3_column_type(stmt, 4) != SQLITE_NULL) ? call : \
+		                      (sqlite3_column_type(stmt, 5) != SQLITE_NULL) ? attach : \
+		                      none;
+		if (!type) continue;
+		const char * author = (sqlite3_column_type(stmt, 2) == SQLITE_NULL) ? \
+		acc_number : \
+		sqlite3_column_text(stmt, 2);
 		
-		if (!type)
-		{
-			continue;
-		}
-		const unsigned char * thread = sqlite3_column_text(stmt, 1);
-		const unsigned char * group = lookup((const char **) group_table, thread, group_table_pos);
+		html_print(out_fd, &last_msg, author, acc_number);
 		
-		if (!(!groups) && (!group || strcmp(group, groups) != 0))
-		{
-			continue;
-		}
 		const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000;
-		
-		bool you = false, same = false;
-		unsigned char * author = NULL;
-		// small hack - the authorPhoneNumber is Null if its from you
-		if (sqlite3_column_type(stmt, 2) == SQLITE_NULL)
-		{
-			author = acc_number;
-			you = true;
-		}
-		else
-		{
-			author = (char *) sqlite3_column_text(stmt, 2);
-		}
-		
-		if (strcmp(author, last_num) == 0)
-		{
-			same = true;
-		}
-		else
-		{
-			strcpy(last_num, author);
-		}
-		
-		const unsigned char * name = lookup((const char **) name_table, author, name_table_pos);
+		const char * name = lookup((const char **) name_table, author, name_table_pos);
 		
 		if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 		{
-			const void * blob_data = sqlite3_column_blob(stmt, 5);
-			const size_t blob_size = sqlite3_column_bytes(stmt, 5);
 			char ** uuids = NULL;
-			size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size);
-			if (!uuidc && type == 3)
-			{
-				continue;
-			}
+			size_t uuidc = uuid_plister(&uuids, sqlite3_column_blob(stmt, 5), sqlite3_column_bytes(stmt, 5));
+			if (!uuidc && type == 3) continue;
+			last_msg.attachments[0] = '\0';
+			size_t path_l = 1;
 			while (uuidc)
 			{
 				--uuidc;
-				char * path =NULL;
+				char * path = NULL;
 				attach_lookup(&path, uuids[uuidc], db);
 				free(uuids[uuidc]);
 				if (path)
 				{
-					dprintf(out_fd, html_image, same ? "message-nonbreak" : "message-break", you ? "right" : "left", path);
+					path_l += strlen(path) + 1;
+					if (path_l > last_msg.attachments_max)
+					{
+						last_msg.attachments = realloc(last_msg.attachments, path_l + 1);
+						last_msg.attachments_max = path_l;
+						
+					}
+					strcat(last_msg.attachments, path);
+					strcat(last_msg.attachments, "|");
+					
+					free(path);
 				}
-				free(path);
 				if (!uuidc)
 				{
 					free(uuids);
@@ -536,65 +651,47 @@ int dump(const char * source, const char * output, const bool list, const char *
 		}
 		if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
 		{
-			const void * blob_data = sqlite3_column_blob(stmt, 6);
-			const size_t blob_size = sqlite3_column_bytes(stmt, 6);
-			char * quote = NULL;
-			if (quote_plister(&quote, blob_data, blob_size, db) && quote)
+			quote_plister(&last_msg.quote, sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6), db);
+		}
+		
+		if (type == text)
+		{
+			const char * body   = sqlite3_column_text(stmt, 0);
+			const size_t body_l = strlen(body);
+			if (body_l > last_msg.body_max)
 			{
-				//dprintf(out_fd, "<\"%s\">\n\t", quote);
-				free(quote);
+				last_msg.body = realloc(last_msg.body, body_l + 1);
+				last_msg.body_max = body_l;
 			}
+			strcpy(last_msg.body, sqlite3_column_text(stmt, 0));
+		}
+		else if (type == call)
+		{
+			last_msg.call_type = sqlite3_column_int64(stmt, 4);
 		}
 		
+		char * new_author = last_msg.last_author;
+		last_msg.last_author = last_msg.author;
+		last_msg.author = new_author;
+		strcpy(last_msg.author, author);
+		last_msg.last_timestamp = last_msg.timestamp;
+		last_msg.timestamp = timestamp;
+		last_msg.type = type;
 		
-		char buffer[30];
-		const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp);
-		if (tm_info.tm_yday != tm_info_tmp.tm_yday)
-		{
-			strftime(buffer, 30, "%e, %b %Y", &tm_info_tmp);
-			dprintf(out_fd, html_dater, buffer);
-		}
-		tm_info = tm_info_tmp;
-		strftime(buffer, 30, "%H:%M", &tm_info);
-		if (type == 1)
-		{
-			// print message
-			const unsigned char * body = sqlite3_column_text(stmt, 0);
-			//dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
-			//dprintf(out_fd, "%s\n\n", body);
-			dprintf(out_fd, html_message, same ? "message-nonbreak" : "message-break", you ? "right" : "left", body, buffer);
-		}
-		else if (type == 2)
-		{
-			// print call
-			const unsigned int call = sqlite3_column_int64(stmt, 4);
-			//dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name);
-			char calli[64];
-			sprintf(calli, "%s voice call ", call == 2  ? "Outgoing" : \
-			                                 call == 1  ? "Incoming" : \
-			                                 call == 8  ? "Unanswered" : \
-			                                 call == 12 ? "Missed call while on Do not disturb" : \
-			                                 call == 7  ? "Declied" : \
-			                                 call == 3  ? "Missed" : "");
-			strcat(calli, "· ");
-			strcat(calli, buffer);
-			dprintf(out_fd, html_dater, calli);
-		}
-		else if (type == 3);
 	}
+	html_print(out_fd, &last_msg, NULL, acc_number);
+	free(last_msg.author);
+	free(last_msg.last_author);
+	free(last_msg.body);
+	free(last_msg.attachments);
+	free(last_msg.quote);
+	free(group);
 	
 	sqlite3_finalize(stmt);
 	dprintf(out_fd, "%s\n", html_footer);
 	
-	if (last_num)
-	{
-		free(last_num);
-	}
-	
 	close:
 	sqlite3_close(db);
-	
-	
 	
 	// free name_table
 	while (1)

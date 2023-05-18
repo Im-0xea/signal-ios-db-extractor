@@ -17,20 +17,20 @@ const char * html_dater = \
 "			<div class=\"dater\">\n" \
 "				%s\n" \
 "			</div>\n";
-const char * html_message = \
-"			<div class=\"message %s message-text %s-message\">\n" \
+const char * html_message_start = \
+"			<div class=\"message message-text message-%s-%s\">\n";
+const char * html_body = \
 "				<div class=\"message-content\">\n" \
 "					%s\n" \
 "				</div>\n" \
 "				<div class=\"time\">\n" \
 "					%s\n" \
-"				</div>\n" \
+"				</div>\n";
+const char * html_message_end = \
 "			</div>\n";
 const char * html_reply = \
 "				<div class\"quote\">\n" \
 "					%s\n" \
 "				</div>";
 const char * html_image = \
-"			<div class=\"message %s %s-message image\">\n" \
-"				<img src=\"Attachments/%s\" alt=\"image\">\n" \
-"			</div>\n";
+"			<img src=\"Attachments/%s\" alt=\"image\">\n";

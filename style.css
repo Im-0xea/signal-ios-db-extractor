@@ -7,16 +7,61 @@ body {
 	background-color: #121212;
 	font-family: Inter, Arial, sans-serif;
 }
-
-.message-break {
-	margin-top: 15px;
+.left-message {
+	background-color: #3b3b3b;
 }
-.message-nonbreak {
-	margin-top: 3px;
+.right-message {
+	background-color: #c55978;
+	align-self: flex-end;
+}
+
+.message-left-top {
+	background-color: #3b3b3b;
+border-radius: 20px 20px 20px 5px;
+	margin-bottom: 3px;
+}
+.message-left-middle {
+	background-color: #3b3b3b;
+	border-radius: 5px 20px 20px 5px;
+	margin-bottom: 3px;
+}
+.message-left-bottom {
+	background-color: #3b3b3b;
+	border-radius: 5px 20px 20px 20px;
+	margin-bottom: 15px;
+}
+.message-right-top {
+	background-color: #c55978;
+	align-self: flex-end;
+	border-radius: 20px 5px 20px 20px;
+	margin-bottom: 3px;
+}
+.message-right-middle {
+	background-color: #c55978;
+	align-self: flex-end;
+	border-radius: 20px 5px 5px 20px;
+	margin-bottom: 3px;
+}
+.message-right-bottom {
+	background-color: #c55978;
+	align-self: flex-end;
+	border-radius: 20px 20px 5px 20px;
+	margin-bottom: 15px;
+}
+.message-left-standalone {
+	background-color: #3b3b3b;
+	border-radius: 20px 20px 20px 20px;
+	margin-bottom: 15px;
+}
+.message-right-standalone {
+	background-color: #c55978;
+	align-self: flex-end;
+	border-radius: 20px 20px 20px 20px;
+	background-color: #c55978;
+	margin-bottom: 15px;
 }
 
 .message {
-	border-radius: 20px 20px 20px 20px;
 	font-size: 14px;
 	margin-left: 7px;
 	margin-right: 7px;
@@ -30,13 +75,6 @@ body {
 .message-text {
 	padding : 9px;
 	padding-left: 13px;
-}
-.left-message {
-	background-color: #3b3b3b;
-}
-.right-message {
-	background-color: #c55978;
-	align-self: flex-end;
 }
 .message-content {
 	flex-grow: 1;
