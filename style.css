@@ -8,37 +8,16 @@ body {
 	font-family: Inter, Arial, sans-serif;
 }
 
-.message-left-top {
-	border-radius: 20px 20px 20px 5px;
+.message-break {
+	margin-top: 15px;
 }
-.message-left-middle {
-	border-radius: 5px 20px 20px 5px;
-}
-.message-left-bottom {
-	border-radius: 5px 20px 20px 20px;
-}
-.message-right-top {
-	border-radius: 20px 5px 20px 20px;
-}
-.message-right-middle {
-	border-radius: 20px 5px 5px 20px;
-}
-.message-right-bottom {
-	border-radius: 20px 20px 5px 20px;
-}
-.message-left-standalone {
-	border-radius: 20px 20px 20px 20px;
-	margin-bottom: 7px;
-}
-.message-right-standalone {
-	border-radius: 20px 20px 20px 20px;
-	margin-bottom: 7px;
-	background-color: #c55978;
+.message-nonbreak {
+	margin-top: 3px;
 }
 
 .message {
+	border-radius: 20px 20px 20px 20px;
 	font-size: 14px;
-	margin-top: 5px;
 	margin-left: 7px;
 	margin-right: 7px;
 	position: relative;
@@ -56,11 +35,12 @@ body {
 	background-color: #3b3b3b;
 }
 .right-message {
-	background-color: #2365ee;
+	background-color: #c55978;
 	align-self: flex-end;
 }
 .message-content {
 	flex-grow: 1;
+	word-wrap: break-all;
 	display: inline-block;
 }
 .time {
@@ -83,7 +63,8 @@ body {
 	color: #cccccc;
 	text-align: center;
 	margin: auto;
-	margin-bottom: 20px;
+	margin-bottom: 10px;
+	margin-top: 15px;
 }
 img {
 	border-radius: 20px;

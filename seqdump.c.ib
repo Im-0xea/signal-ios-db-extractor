@@ -19,43 +19,14 @@
 		
 */
 
-const char * html_header = \
-"<!DOCTYPE html>\n" \
-"<html>\n" \
-"	<head>\n" \
-"		<meta charset=\"UTF-8\">\n" \
-"		<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" \
-"		<link rel=\"stylesheet\" href=\"style.css\">\n" \
-"		<title>Signal IOS Dump</title>\n" \
-"	</head>\n" \
-"	<body>\n" \
-"		<div class=\"message-container\">"
-const char * html_footer = \
-"		</div>\n" \
-"	</body>\n" \
-"</html>\n"
-const char * html_dater = \
-"			<div class=\"dater\">\n" \
-"				%s\n" \
-"			</div>\n"
-const char * html_message = \
-"			<div class=\"message message-text %s-message\">\n" \
-"				<div class=\"message-content\">\n" \
-"					%s\n" \
-"				</div>\n" \
-"				<div class=\"time\">\n" \
-"					%s\n" \
-"				</div>\n" \
-"			</div>\n"
-const char * html_image = \
-"			<div class=\"message %s-message image\">\n" \
-"				<img src=\"Attachments/%s\" alt=\"image\">\n" \
-"			</div>\n"
-
-
-
+#include "html.h"
 
 int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber)
+
+void sql_error(sqlite3 * db, const char * part)
+	fprintf(stderr, "failed at %s", part)
+	sqlite3_close(db)
+	exit(1)
 
 static void help(void)
 	puts("Usage seqdump: -s [DATABASE] -o [OUTPUT] \n\n" \
@@ -169,13 +140,9 @@ const size_t uuid_plister(char *** dest, const char * plist, const char * plist_
 void attach_lookup(char ** dest, char * key, sqlite3 * db)
 	sqlite3_stmt * stmtu = NULL
 	if ((sqlite3_prepare_v2(db, "SELECT localRelativeFilePath FROM model_TSAttachment WHERE uniqueId = ?;", -1, &stmtu, NULL)) != SQLITE_OK)
-		fprintf(stderr, "Error reading from Attachment table\n")
-		sqlite3_close(db)
-		exit(1)
+		sql_error(db, "Attachment table")
 	if (sqlite3_bind_text(stmtu, 1, key, -1, SQLITE_TRANSIENT) != SQLITE_OK)
-		fprintf(stderr, "Error reading from Interaction table\n")
-		sqlite3_close(db)
-		exit(1)
+		sql_error(db, "Attachment table")
 	if (sqlite3_step(stmtu) == SQLITE_ROW)
 		const char * path = sqlite3_column_text(stmtu, 0)
 		if (path)
@@ -265,48 +232,37 @@ const size_t quote_plister(char ** dest, const char * plist_buf, size_t plist_si
 	return count
 
 int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber)
-	// either set output file descriptor to stdout or open defined output as fd
 	int out_fd = 1
 	if (output != NULL)
 		out_fd = open(output, O_WRONLY | O_CREAT, 0644)
 	
-	// open sqlite3 database
 	sqlite3 * db
-	const char * tail = NULL
 	if ((sqlite3_open(source, &db)) != SQLITE_OK)
 		fprintf(stderr, "Error opening db\n")
 		return 1
 	
 	// get profile phone number
 	// I decided to just take the first Recipients phone number
-	// as this consistently returns your own
 	sqlite3_stmt * an_stmt = NULL
 	char * acc_number = NULL
 	if (sqlite3_prepare_v2(db, "SELECT recipientPhoneNumber FROM model_SignalRecipient WHERE id = 1;", -1, &an_stmt, NULL) != SQLITE_OK)
-		fprintf(stderr, "Error reading Account Phone number\n")
-		sqlite3_close(db)
-		return 1
+		sql_error(db, "Account Phone number")
 	if (sqlite3_step(an_stmt) == SQLITE_ROW)
 		const char * num = sqlite3_column_text(an_stmt, 0)
 		const size_t num_l = strlen(num)
 		acc_number = malloc((num_l + 1) * sizeof(char))
 		strcpy(acc_number, num)
 	else
-		fprintf(stderr, "Error reading Account Phone number\n")
-		sqlite3_close(db)
-		return 1
+		sql_error(db, "Account Phone number")
 	sqlite3_finalize(an_stmt)
 	
 	
 	// create profile lookup table
-	// this table contains [0] Profile Name [1] Phone number
 	// allowing you to find the name of the sender of a message
 	// and looking up the name associated with a dm group
 	sqlite3_stmt * pft_stmt
 	if (sqlite3_prepare_v2(db, "SELECT profileName, recipientPhoneNumber FROM model_OWSUserProfile;", -1, &pft_stmt, NULL) != SQLITE_OK)
-		fprintf(stderr, "Error Parsing Profile Table\n")
-		sqlite3_close(db)
-		return 1
+		sql_error(db, "Profile Table")
 	char ** name_table = malloc(10 * sizeof(char *))
 	size_t name_table_pos = 0
 	size_t name_table_last_malloc = 0
@@ -331,13 +287,10 @@ int dump(const char * source, const char * output, const bool list, const char *
 	sqlite3_finalize(pft_stmt)
 	
 	// create group lookup table
-	// this table contains [0] Group Name [1] Group ID
 	// allowing you to associate messages with group names
 	sqlite3_stmt * gt_stmt = NULL
 	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber FROM model_TSThread;", -1, &gt_stmt, NULL) != SQLITE_OK)
-		fprintf(stderr, "Error Parsing Profile Table\n")
-		sqlite3_close(db)
-		return 1
+		sql_error(db, "Group Table\n")
 	char ** group_table = malloc(10 * sizeof(char *))
 	size_t group_table_pos = 0
 	size_t group_table_last_malloc = 0
@@ -363,128 +316,111 @@ int dump(const char * source, const char * output, const bool list, const char *
 	if (list || nnumber != NULL || nnumber == (char *) 1)
 		goto close
 	
-	// message loop
-	// loops over all entries of the interaction table and prints them accordingly
 	dprintf(out_fd, "%s\n", html_header)
 	
+	// loops over all entries of the interaction table and prints them accordingly
 	sqlite3_stmt * stmt
-	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage FROM model_TSInteraction ORDER BY timestamp ASC;", -1, &stmt, &tail)) != SQLITE_OK)
-		fprintf(stderr, "Error reading from Interaction table\n")
-		sqlite3_close(db)
-		return 1
+	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage FROM model_TSInteraction;", -1, &stmt, NULL)) != SQLITE_OK)
+		sql_error(db, "Interaction table")
 	
+	char * last_num = malloc(32)
+	last_num[0] = '\0'
 	const time_t unixstart = 0
 	struct tm tm_info = *gmtime(&unixstart)
 	while (sqlite3_step(stmt) == SQLITE_ROW)
-		const unsigned char * record = sqlite3_column_text(stmt, 1)
-		// get group name from group_table
-		const unsigned char * group = lookup((const char **) group_table, record, group_table_pos)
-		if (!groups || group && strcmp(group, groups) == 0)
-			unsigned char * author = NULL
-			bool you = false
-			// small hack - the authorPhoneNumber is Null if its from you
-			// so this is why we needed to safe it before
-			if (sqlite3_column_type(stmt, 2) == SQLITE_NULL)
-				author = acc_number
-				you = true
-			else
-				author = (char *) sqlite3_column_text(stmt, 2)
-			const unsigned char * name = lookup((const char **) name_table, author, name_table_pos)
-			
-			char buffer[30]
-			if (sqlite3_column_type(stmt, 0) != SQLITE_NULL)
-				// print message
-				const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
-				const double timestampd = (float) sqlite3_column_int64(stmt, 3) / (float) 1000.0
-				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp)
-				if (tm_info.tm_yday != tm_info_tmp.tm_yday)
-					strftime(buffer, 30, "%e, %b %Y", &tm_info_tmp)
-					dprintf(out_fd, html_dater, buffer)
-				tm_info = tm_info_tmp
-				strftime(buffer, 30, "%H:%M", &tm_info)
-				const unsigned char * body = sqlite3_column_text(stmt, 0)
-				//dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name)
-				if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
-					const void * blob_data = sqlite3_column_blob(stmt, 6)
-					const size_t blob_size = sqlite3_column_bytes(stmt, 6)
-					char * quote = NULL
-					if (quote_plister(&quote, blob_data, blob_size, db) && quote)
-						//dprintf(out_fd, "<\"%s\">\n\t", quote)
-						free(quote)
-				if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
-					const void * blob_data = sqlite3_column_blob(stmt, 5)
-					const size_t blob_size = sqlite3_column_bytes(stmt, 5)
-					char ** uuids = NULL
-					size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size)
-					while (uuidc)
-						--uuidc
-						char * path =NULL
-						attach_lookup(&path, uuids[uuidc], db)
-						free(uuids[uuidc])
-						if (path)
-							dprintf(out_fd, html_image, you ? "right" : "left", path)
-						free(path)
-						if (!uuidc)
-							free(uuids)
-					
-				//dprintf(out_fd, "%s\n\n", body)
-				dprintf(out_fd, html_message, you ? "right" : "left", body, buffer)
-			else if (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
-				// print call
-				const unsigned int call = sqlite3_column_int64(stmt, 4)
-				const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
-				const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp)
-				if (tm_info.tm_yday != tm_info_tmp.tm_yday)
-					strftime(buffer, 30, "%e, %b %Y", &tm_info_tmp)
-					dprintf(out_fd, html_dater, buffer)
-				tm_info = tm_info_tmp
-				strftime(buffer, 30, "%H:%M", &tm_info)
-				//dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name)
-				//dprintf(out_fd, "<%s voice call>\n\n", call == 2  ? "Outgoing" : \
-				                                       call == 1  ? "Incomming" : \
-				                                       call == 8  ? "Unanswered" : \
-				                                       call == 12 ? "Missed call while on Do not disturb" : \
-				                                       call == 7  ? "Declied" : \
-				                                       call == 3  ? "Missed" : "")
-			else if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
-				if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
-					const void * blob_data = sqlite3_column_blob(stmt, 6)
-					const size_t blob_size = sqlite3_column_bytes(stmt, 6)
-					char * quote = NULL
-					if (quote_plister(&quote, blob_data, blob_size, db) && quote)
-						//dprintf(out_fd, "<\"%s\">\n\t", quote)
-						free(quote)
-				const void * blob_data = sqlite3_column_blob(stmt, 5)
-				const size_t blob_size = sqlite3_column_bytes(stmt, 5)
-				char ** uuids = NULL
-				size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size)
-				if (uuidc)
-					const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
-					const time_t timestampd = sqlite3_column_int64(stmt, 3)
-					const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp)
-					if (tm_info.tm_yday != tm_info_tmp.tm_yday)
-						strftime(buffer, 30, "%e, %b %Y", &tm_info_tmp)
-						dprintf(out_fd, html_dater, buffer)
-					tm_info = tm_info_tmp
-					strftime(buffer, 30, "%H:%M", &tm_info)
-					//dprintf(out_fd, "%s [ %s ] :\n", buffer, name)
-				while (uuidc)
-					--uuidc
-					char * path = NULL
-					attach_lookup(&path, uuids[uuidc], db)
-					if (path)
-						//dprintf(out_fd, "\t<attachment: %s>\n", path)
-					free (uuids[uuidc])
-					free (path)
-					if (!uuidc)
-						free (uuids)
-						//dprintf(out_fd, "\n")
+		const int type = (sqlite3_column_type(stmt, 0) != SQLITE_NULL) ? 1 : \
+		                 (sqlite3_column_type(stmt, 4) != SQLITE_NULL) ? 2 : \
+		                 (sqlite3_column_type(stmt, 5) != SQLITE_NULL) ? 3 : 0
+		
+		if (!type)
+			continue
+		const unsigned char * thread = sqlite3_column_text(stmt, 1)
+		const unsigned char * group = lookup((const char **) group_table, thread, group_table_pos)
+		
+		if (!(!groups) && (!group || strcmp(group, groups) != 0))
+			continue
+		const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
+		
+		bool you = false, same = false
+		unsigned char * author = NULL
+		// small hack - the authorPhoneNumber is Null if its from you
+		if (sqlite3_column_type(stmt, 2) == SQLITE_NULL)
+			author = acc_number
+			you = true
+		else
+			author = (char *) sqlite3_column_text(stmt, 2)
+		
+		if (strcmp(author, last_num) == 0)
+			same = true
+		else
+			strcpy(last_num, author)
+		
+		const unsigned char * name = lookup((const char **) name_table, author, name_table_pos)
+		
+		if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
+			const void * blob_data = sqlite3_column_blob(stmt, 5)
+			const size_t blob_size = sqlite3_column_bytes(stmt, 5)
+			char ** uuids = NULL
+			size_t uuidc = uuid_plister(&uuids, blob_data, blob_data + blob_size)
+			if (!uuidc && type == 3)
+				continue
+			while (uuidc)
+				--uuidc
+				char * path =NULL
+				attach_lookup(&path, uuids[uuidc], db)
+				free(uuids[uuidc])
+				if (path)
+					dprintf(out_fd, html_image, same ? "message-nonbreak" : "message-break", you ? "right" : "left", path)
+				free(path)
+				if (!uuidc)
+					free(uuids)
+		if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
+			const void * blob_data = sqlite3_column_blob(stmt, 6)
+			const size_t blob_size = sqlite3_column_bytes(stmt, 6)
+			char * quote = NULL
+			if (quote_plister(&quote, blob_data, blob_size, db) && quote)
+				//dprintf(out_fd, "<\"%s\">\n\t", quote)
+				free(quote)
+		
+		
+		char buffer[30]
+		const struct tm tm_info_tmp = *gmtime((time_t *) &timestamp)
+		if (tm_info.tm_yday != tm_info_tmp.tm_yday)
+			strftime(buffer, 30, "%e, %b %Y", &tm_info_tmp)
+			dprintf(out_fd, html_dater, buffer)
+		tm_info = tm_info_tmp
+		strftime(buffer, 30, "%H:%M", &tm_info)
+		if (type == 1)
+			// print message
+			const unsigned char * body = sqlite3_column_text(stmt, 0)
+			//dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name)
+			//dprintf(out_fd, "%s\n\n", body)
+			dprintf(out_fd, html_message, same ? "message-nonbreak" : "message-break", you ? "right" : "left", body, buffer)
+		else if (type == 2)
+			// print call
+			const unsigned int call = sqlite3_column_int64(stmt, 4)
+			//dprintf(out_fd, "%s [ %s ] :\n\t", buffer, name)
+			char calli[64]
+			sprintf(calli, "%s voice call ", call == 2  ? "Outgoing" : \
+			                                 call == 1  ? "Incoming" : \
+			                                 call == 8  ? "Unanswered" : \
+			                                 call == 12 ? "Missed call while on Do not disturb" : \
+			                                 call == 7  ? "Declied" : \
+			                                 call == 3  ? "Missed" : "")
+			strcat(calli, "· ")
+			strcat(calli, buffer)
+			dprintf(out_fd, html_dater, calli)
+		else if (type == 3)
 	
 	sqlite3_finalize(stmt)
+	dprintf(out_fd, "%s\n", html_footer)
+	
+	if (last_num)
+		free(last_num)
+	
 	close:
 	sqlite3_close(db)
 	
-	dprintf(out_fd, "%s\n", html_footer)
 	
 	
 	// free name_table
