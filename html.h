@@ -18,19 +18,21 @@ const char * html_dater = \
 "				%s\n" \
 "			</div>\n";
 const char * html_message_start = \
-"			<div class=\"message message-text message-%s-%s\">\n";
+"			<div class=\"message message-%s-%s\">\n";
+const char * html_message_reply_start = \
+"				<div class=\"reply\">\n";
+const char * html_image = \
+"			<img src=\"Attachments/%s\" alt=\"image\">\n";
 const char * html_body = \
-"				<div class=\"message-content\">\n" \
-"					%s\n" \
-"				</div>\n" \
-"				<div class=\"time\">\n" \
-"					%s\n" \
+"				<div class=\"message-text\">\n" \
+"					<div class=\"message-content\">\n" \
+"						%s\n" \
+"					</div>\n" \
+"					<div class=\"time\">\n" \
+"						%s\n" \
+"					</div>\n" \
+"				</div>\n";
+const char * html_message_reply_end = \
 "				</div>\n";
 const char * html_message_end = \
 "			</div>\n";
-const char * html_reply = \
-"				<div class\"quote\">\n" \
-"					%s\n" \
-"				</div>";
-const char * html_image = \
-"			<img src=\"Attachments/%s\" alt=\"image\">\n";

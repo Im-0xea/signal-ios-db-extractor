@@ -31,6 +31,7 @@ msg_type
 typedef struct message
 	time_t timestamp
 	time_t last_timestamp
+	time_t quote_timestamp
 	msg_type type
 	msg_type type_quote
 	int call_type
@@ -44,12 +45,13 @@ typedef struct message
 	char * quote
 msg
 
-void html_print(int fd, msg * last_msg, const char * next_author, const char * you)
+void html_print(int fd, msg * last_msg, const char * next_author, const time_t next_timestamp, const char * you)
 	if (!last_msg->type)
 		return
 	char time_buffer[30]
-	const struct tm tm_info      = *gmtime((time_t *) &last_msg->last_timestamp)
-	const struct tm tm_info_last = *gmtime((time_t *) &last_msg->timestamp)
+	const struct tm tm_info      = *gmtime(&last_msg->timestamp)
+	const struct tm tm_info_last = *gmtime(&last_msg->last_timestamp)
+	const struct tm tm_info_next = *gmtime(&next_timestamp)
 	if (tm_info.tm_yday != tm_info_last.tm_yday)
 		strftime(time_buffer, 30, "%e, %b %Y", &tm_info)
 		dprintf(fd, html_dater, time_buffer)
@@ -57,12 +59,13 @@ void html_print(int fd, msg * last_msg, const char * next_author, const char * y
 	
 	if (last_msg->type == call)
 		char calli[64]
-		sprintf(calli, "&#128222 %s voice call · ", last_msg->call_type == 2  ? "Outgoing" : \
-		                                            last_msg->call_type == 1  ? "Incoming" : \
-		                                            last_msg->call_type == 8  ? "Unanswered" : \
-		                                            last_msg->call_type == 12 ? "Missed call while on Do not disturb" : \
-		                                            last_msg->call_type == 7  ? "Declied" : \
-		                                            last_msg->call_type == 3  ? "Missed" : "")
+		const char * call_msg = last_msg->call_type == 2  ? "Outgoing" : \
+		                        last_msg->call_type == 1  ? "Incoming" : \
+		                        last_msg->call_type == 8  ? "Unanswered" : \
+		                        last_msg->call_type == 12 ? "Missed call while on Do not disturb" : \
+		                        last_msg->call_type == 7  ? "Declied" : \
+		                        last_msg->call_type == 3  ? "Missed" : ""
+		sprintf(calli, "&#128222 %s voice call · ", call_msg)
 		strcat(calli, time_buffer)
 		dprintf(fd, html_dater, calli)
 		return
@@ -71,12 +74,27 @@ void html_print(int fd, msg * last_msg, const char * next_author, const char * y
 	char * dir
 	if (strcmp(last_msg->author, last_msg->last_author) == 0)
 		if (strcmp(last_msg->author, next_author) == 0)
-			dir = "middle"
+			if (tm_info.tm_yday != tm_info_last.tm_yday)
+				if (tm_info.tm_yday != tm_info_next.tm_yday)
+					dir = "bottom"
+				else
+					dir = "top"
+			else
+				if (tm_info.tm_yday != tm_info_next.tm_yday)
+					dir = "bottom"
+				else
+					dir = "middle"
 		else
-			dir = "bottom"
+			if (tm_info.tm_yday != tm_info_last.tm_yday)
+				dir = "standalone"
+			else
+				dir = "bottom"
 	else
 		if (strcmp(last_msg->author, next_author) == 0)
-			dir = "top"
+			if (tm_info.tm_yday < tm_info_next.tm_yday)
+				dir = "standalone"
+			else
+				dir = "top"
 		else
 			dir = "standalone"
 	char lor[16]
@@ -85,6 +103,22 @@ void html_print(int fd, msg * last_msg, const char * next_author, const char * y
 	else
 		strcpy(lor, "left")
 	dprintf(fd, html_message_start, lor, dir)
+	
+	if (last_msg->type_quote != none)
+		dprintf(fd, "%s", html_message_reply_start)
+		if (last_msg->type_quote == text)
+			dprintf(fd, html_body, last_msg->quote, "")
+		if (last_msg->type_quote == attach)
+			char * attach_ptr = last_msg->quote
+			while(1)
+				if (*attach_ptr == '\0')
+					break
+				char * next_ptr = strchr(attach_ptr, '|')
+				if (!next_ptr) break
+				*next_ptr = '\0'
+				dprintf(fd, html_image, attach_ptr)
+				attach_ptr = next_ptr + 1
+		dprintf(fd, "%s", html_message_reply_end)
 	
 	char * attach_ptr = last_msg->attachments
 	while(1)
@@ -232,7 +266,7 @@ void attach_lookup(char ** dest, char * key, sqlite3 * db)
 	sqlite3_finalize(stmtu)
 
 // parser for quoted messages hidden in plists
-const size_t quote_plister(char ** dest, const char * plist_buf, size_t plist_size, sqlite3 * db)
+const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const char * plist_buf, size_t plist_size, sqlite3 * db)
 	size_t count = 0
 	plist_t plist = NULL
 	plist_format_t form = PLIST_FORMAT_BINARY
@@ -257,7 +291,7 @@ const size_t quote_plister(char ** dest, const char * plist_buf, size_t plist_si
 		plist_array_iter aiter = NULL
 		plist_array_new_iter(value, &aiter)
 		size_t str_c = 0
-		bool attach = false
+		bool attachi = false
 		bool dict_checked = false
 		while (1)
 			plist_t avalue
@@ -275,30 +309,37 @@ const size_t quote_plister(char ** dest, const char * plist_buf, size_t plist_si
 				char * dkeys
 				plist_dict_get_item_key(dkeyn, &dkeys)
 				if (strcmp(dkeys, "quotedAttachment") == 0)
-					attach = true
+					attachi = true
 				plist_mem_free(dkeys)
 				free(diter)
 				dict_checked = true
 			else if (plist_get_node_type(avalue) == PLIST_STRING)
 				if (str_c == 1)
-					if (!attach)
+					if (!attachi)
+						*type = text
 						char * str
 						plist_get_string_val(avalue, &str)
-						const size_t str_l = strlen(str)
 						if (str)
-							*dest = malloc((str_l + 1) * sizeof(char))
+							const size_t str_l = strlen(str)
+							if (str_l > *dest_s)
+								*dest = realloc(*dest, str_l + 1)
+								*dest_s = str_l
 							strcpy(*dest, str)
 							plist_mem_free(str)
 							count++
 					else
+						*type = attach
 						char * str
 						plist_get_string_val(avalue, &str)
 						char * path = NULL
 						attach_lookup(&path, str, db)
 						plist_mem_free(str)
 						if (path)
-							*dest = malloc((strlen(path) + 12) * sizeof(char))
-							sprintf(*dest, "attachment: %s", path)
+							const size_t path_l = strlen(path)
+							if (path_l > *dest_s)
+								*dest = realloc(*dest, path_l + 1)
+								*dest_s = path_l
+							sprintf(*dest, "%s", path)
 							free(path)
 							count++
 					break
@@ -411,6 +452,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		sql_error(db, "Interaction table")
 	
 	msg last_msg =
+		.last_timestamp = 0
 		.timestamp = 0
 		.type            = none
 		.type_quote      = none
@@ -431,11 +473,11 @@ int dump(const char * source, const char * output, const bool list, const char *
 		if (!type) continue
 		const char * author = (sqlite3_column_type(stmt, 2) == SQLITE_NULL) ? \
 		acc_number : \
-		sqlite3_column_text(stmt, 2)
-		
-		html_print(out_fd, &last_msg, author, acc_number)
-		
+		(const char *) sqlite3_column_text(stmt, 2)
 		const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
+		
+		html_print(out_fd, &last_msg, author, timestamp, acc_number)
+		
 		const char * name = lookup((const char **) name_table, author, name_table_pos)
 		
 		if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
@@ -461,8 +503,9 @@ int dump(const char * source, const char * output, const bool list, const char *
 					free(path)
 				if (!uuidc)
 					free(uuids)
+		last_msg.type_quote = none
 		if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
-			quote_plister(&last_msg.quote, sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6), db)
+			quote_plister(&last_msg.quote, &last_msg.quote_max, &last_msg.type_quote, sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6), db)
 		
 		if (type == text)
 			const char * body   = sqlite3_column_text(stmt, 0)
@@ -482,7 +525,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		last_msg.timestamp = timestamp
 		last_msg.type = type
 		
-	html_print(out_fd, &last_msg, NULL, acc_number)
+	html_print(out_fd, &last_msg, NULL, last_msg.timestamp,  acc_number)
 	free(last_msg.author)
 	free(last_msg.last_author)
 	free(last_msg.body)
