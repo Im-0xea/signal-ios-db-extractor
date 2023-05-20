@@ -48,10 +48,11 @@ $ ./seqdump -s db.sql -f irc -g Niki
 - sqlite3
 - libplist ( >= 2.3.0)
 
+You can use this script to install the required version of ib, libplist and the inter font, this is not recommended but will work for the lazy.
 ~~~
-(you can use this script to install the required version of ib, libplist and the inter font, this is not recommended but will work in most cases)
 $ ./depstrap 
-
+~~~
+~~~
 $ make (IB=./ib if installed by depstrap)
 
 (optional)
