@@ -26,7 +26,7 @@ const char * html_dater = \
 const char * html_message_start = \
 "			<div class=\"message message-%s-%s\">\n"
 const char * html_message_reply_start = \
-"				<div class=\"reply\">\n"
+"				<div class=\"%s-reply\">\n"
 const char * html_image = \
 "			<img src=\"Attachments/%s\" alt=\"image\">\n"
 const char * html_body = \
@@ -107,7 +107,7 @@ void html_print(int fd, msg * last_msg, const char * next_author, const time_t n
 	dprintf(fd, html_message_start, lor, dir)
 	
 	if (last_msg->type_quote != none)
-		dprintf(fd, "%s", html_message_reply_start)
+		dprintf(fd, html_message_reply_start, lor)
 		if (last_msg->type_quote == text)
 			dprintf(fd, html_body, last_msg->quote, "")
 		if (last_msg->type_quote == attach)

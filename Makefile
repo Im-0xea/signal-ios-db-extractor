@@ -3,16 +3,20 @@ LD = cc
 IB = ib
 
 CFLAGS = -g
+LDFLAGS = 
 
 LIBS = -lplist-2.0 -lsqlite3
+INC = -I build
 
 all:
-	$(IB) html.h.ib
-	$(IB) irc.h.ib
-	$(IB) html.c.ib
-	$(IB) irc.c.ib
-	$(IB) msg.h.ib
-	$(IB) seqdump.c.ib
-	$(CC) html.c -c -o html.o $(CFLAGS) 
-	$(CC) seqdump.c -c -o seqdump.o $(CFLAGS) 
-	$(LD) seqdump.o html.o -o seqdump $(LIBS)
+	mkdir -p build
+	$(IB) html.h.ib -o build/html.h
+	$(IB) irc.h.ib -o build/irc.h
+	$(IB) html.c.ib -o build/html.c
+	$(IB) irc.c.ib -o build/irc.c
+	$(IB) msg.h.ib -o build/msg.h
+	$(IB) seqdump.c.ib -o build/seqdump.c
+	$(CC) html.c -c -o build/html.o $(CFLAGS) $(INC)
+	$(CC) irc.c -c -o build/irc.o $(CFLAGS) $(INC)
+	$(CC) seqdump.c -c -o build/seqdump.o $(CFLAGS) $(INC)
+	$(LD) seqdump.o build/html.o build/irc.o -o seqdump $(LDFLAGS) $(LIBS)

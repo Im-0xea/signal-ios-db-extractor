@@ -7,8 +7,15 @@ body {
 	background-color: #121212;
 	font-family: Inter, Arial, sans-serif;
 }
-.reply {
-	background-color: #323232;
+.right-reply {
+	background-color: #873c52;
+	border-radius: 20px;
+	margin: 2px;
+	flex-grow: 1;
+	width: calc(100% - 4px);
+}
+.left-reply {
+	background-color: #252525;
 	border-radius: 20px;
 	margin: 2px;
 	flex-grow: 1;
@@ -115,6 +122,6 @@ body {
 }
 img {
 	border-radius: 20px;
-	max-width: 500px;
 	max-height: 500px;
+	max-width: 45vw;
 }
