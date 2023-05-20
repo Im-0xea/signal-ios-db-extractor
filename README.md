@@ -47,9 +47,11 @@ $ ./seqdump -s db.sql -g Niki
 - libplist ( >= 2.3.0)
 
 ~~~
-$ ./depstrap (you can use this script to install the required version of ib, libplist and the inter font, this is not recommended but will work in most cases)
+(you can use this script to install the required version of ib, libplist and the inter font, this is not recommended but will work in most cases)
+$ ./depstrap 
 
 $ make (IB=./ib if installed by depstrap)
 
-root $ make install (optional)
+(optional)
+root $ make install
 ~~~
