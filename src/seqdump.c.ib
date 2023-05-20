@@ -124,7 +124,7 @@ int main(const int argc, char ** argv)
 	
 	dump(source, output, list, groups, number, format)
 
-const char * lookup(const char ** table, const char * key, const size_t limit)
+char * lookup(char ** table, const char * key, const size_t limit)
 	size_t lookupn = 0
 	while (1)
 		if (strcmp(table[lookupn + 1], key) == 0)
@@ -137,7 +137,7 @@ const char * lookup(const char ** table, const char * key, const size_t limit)
 
 // parser for attachement uuids hidden in plists
 // this is a strong bodge but its performant and simple
-const size_t uuid_plister(char *** dest, const char * plist, const size_t plist_size)
+size_t uuid_plister(char *** dest, const char * plist, const size_t plist_size)
 	const char * plist_end = plist + plist_size
 	size_t count = 0
 	size_t last_malloc = 10
@@ -257,6 +257,56 @@ const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const
 	plist_free(plist)
 	return count
 
+void group_plister(char ** dest, const char * plist_buf, size_t plist_size)
+	plist_t plist = NULL
+	plist_format_t form = PLIST_FORMAT_BINARY
+	plist_from_memory(plist_buf, plist_size, &plist, &form)
+	
+	if (plist == NULL || plist_get_node_type(plist) != PLIST_DICT)
+		return
+	
+	plist_dict_iter iter = NULL
+	plist_dict_new_iter(plist, &iter)
+	
+	while (1)
+		plist_t value
+		plist_dict_next_item(plist, iter, NULL, &value)
+		
+		if (!value)
+			break
+		
+		if (plist_get_node_type(value) != PLIST_ARRAY)
+			continue
+		
+		plist_array_iter aiter = NULL
+		plist_array_new_iter(value, &aiter)
+		size_t str_c = 0
+		while (1)
+			plist_t avalue
+			plist_array_next_item(value, aiter, &avalue)
+			
+			if (!avalue) break
+			
+			if (plist_get_node_type(avalue) == PLIST_STRING)
+				if (str_c == 1)
+					char * str
+					plist_get_string_val(avalue, &str)
+					if (str)
+						if (strncmp("groups/", str, 7) == 0)
+							str_c -= 1
+							plist_mem_free(str)
+							continue
+						const size_t str_l = strlen(str)
+						*dest = malloc(str_l + 1)
+						strcpy(*dest, str)
+						plist_mem_free(str)
+					break
+				str_c++
+		free(aiter)
+	
+	free(iter)
+	plist_free(plist)
+
 int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, fmt format)
 	int out_fd = 1
 	if (output != NULL)
@@ -314,33 +364,44 @@ int dump(const char * source, const char * output, const bool list, const char *
 	// create group lookup table
 	// allowing you to associate messages with group names
 	sqlite3_stmt * gt_stmt = NULL
-	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber FROM model_TSThread;", -1, &gt_stmt, NULL) != SQLITE_OK)
+	if (sqlite3_prepare_v2(db, "SELECT uniqueId, contactPhoneNumber, groupModel FROM model_TSThread;", -1, &gt_stmt, NULL) != SQLITE_OK)
 		sql_error(db, "Group Table\n")
 	char ** group_table = malloc(10 * sizeof(char *))
 	size_t group_table_pos = 0
 	char * group
 	size_t group_table_last_malloc = 0
 	while (sqlite3_step(gt_stmt) == SQLITE_ROW)
-		if (sqlite3_column_type(gt_stmt, 0) != SQLITE_NULL && sqlite3_column_type(gt_stmt, 1) != SQLITE_NULL )
-			const unsigned char * group_id = sqlite3_column_text(gt_stmt, 0)
-			const unsigned char * number = sqlite3_column_text(gt_stmt, 1)
-			const char * name = lookup((const char **) name_table, number, name_table_pos)
-			if (name)
-				if (list)
-					dprintf(out_fd, "%s\n", name)
+		if (sqlite3_column_type(gt_stmt, 0) != SQLITE_NULL)
+			const char * group_id = sqlite3_column_text(gt_stmt, 0)
+			char * name = NULL
+			if (sqlite3_column_type(gt_stmt, 2) != SQLITE_NULL)
+				const char * group_model = sqlite3_column_blob(gt_stmt, 2)
+				group_plister(&name, group_model, sqlite3_column_bytes(gt_stmt, 2))
+			else
+				if (sqlite3_column_type(gt_stmt, 1) == SQLITE_NULL)
 					continue
-				if (group_table_last_malloc + 10 <= group_table_pos)
-					group_table = realloc(group_table, (group_table_pos + 10) * sizeof(char *))
-					group_table_last_malloc += 10
+				const char * number = sqlite3_column_text(gt_stmt, 1)
+				name = lookup(name_table, number, name_table_pos)
+			if (!name)
+				continue
+			if (list)
+				dprintf(out_fd, "%s\n", name)
+				continue
+			if (group_table_last_malloc + 10 <= group_table_pos)
+				group_table = realloc(group_table, (group_table_pos + 10) * sizeof(char *))
+				group_table_last_malloc += 10
+			if (sqlite3_column_type(gt_stmt, 2) != SQLITE_NULL)
+				group_table[group_table_pos] = name
+			else
 				group_table[group_table_pos] = malloc(64)
-				group_table[group_table_pos + 1] = malloc(64)
 				strcpy(group_table[group_table_pos], name)
-				if (strcmp(name, groups) == 0)
-					group = malloc(strlen(group_id) + 1)
-					strcpy(group, group_id)
-					
-				strcpy(group_table[group_table_pos + 1], group_id)
-				group_table_pos += 2
+			group_table[group_table_pos + 1] = malloc(64)
+			if (strcmp(name, groups) == 0)
+				group = malloc(strlen(group_id) + 1)
+				strcpy(group, group_id)
+				
+			strcpy(group_table[group_table_pos + 1], group_id)
+			group_table_pos += 2
 	sqlite3_finalize(gt_stmt)
 	
 	if (list || nnumber != NULL || nnumber == (char *) 1)
@@ -382,7 +443,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		
 		html_print(out_fd, &last_msg, author, timestamp, acc_number)
 		
-		const char * name = lookup((const char **) name_table, author, name_table_pos)
+		const char * name = lookup(name_table, author, name_table_pos)
 		
 		if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
 			char ** uuids = NULL
