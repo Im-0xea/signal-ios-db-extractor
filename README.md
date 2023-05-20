@@ -1,6 +1,6 @@
-# Seqdump
+# Signal iOS DB Extractor
 
-A tool for dumping Signal history from iOS, written in [ib](https://github.com/Niki-Nu/ibranching) C.
+This is a tool for dumping Signal history from iOS, written in [ib](https://github.com/Niki-Nu/ibranching) C.
 
 ### Introduction
 
@@ -11,6 +11,7 @@ This tool takes the database aquired following [this](https://cight.co/backup-si
 Features:
 - list groups and contacts
 - dump chats (detects calls, attachments and quotes)
+- formats (html, irc-like)
 
 ~~~
 $ ./seqdump -s db.sql -l

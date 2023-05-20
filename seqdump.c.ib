@@ -28,6 +28,11 @@ typedef enum message_type
 	call
 msg_type
 
+typedef enum format
+	irc
+	html
+fmt
+
 typedef struct message
 	time_t timestamp
 	time_t last_timestamp
@@ -134,7 +139,7 @@ void html_print(int fd, msg * last_msg, const char * next_author, const time_t n
 		dprintf(fd, html_body, last_msg->body, time_buffer)
 	dprintf(fd, "%s", html_message_end)
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber)
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, fmt format)
 
 void sql_error(sqlite3 * db, const char * part)
 	fprintf(stderr, "failed at %s", part)
@@ -150,10 +155,12 @@ static void help(void)
 		" -s --sql       -> define sql database\n" \
 		" -o --output    -> define output\n" \
 		" -l --list      -> list rooms\n" \
+		" -f --format    -> set format (irc, html)\n" \
+		" -n --number    -> extract number of Name\n" \
 		" -g --groups    -> define groups to dump\n")
 
 int main(const int argc, char ** argv)
-	const char * short_options = "hVs:o:c:ln::g:a:"
+	const char * short_options = "hVs:o:c:lf:n::g:"
 	const struct option long_option[] =
 			"help",         no_argument,       0, 'h'
 		
@@ -164,6 +171,8 @@ int main(const int argc, char ** argv)
 			"output",       required_argument, 0, 'o'
 		
 			"list",         no_argument,       0, 'l'
+		
+			"format",       required_argument, 0, 'f'
 		
 			"number",       optional_argument, 0, 'n'
 		
@@ -176,6 +185,7 @@ int main(const int argc, char ** argv)
 	char * groups = NULL
 	char * number = NULL
 	bool   list   = false
+	fmt    format = html
 	
 	while (1)
 		const int opt = getopt_long(argc, argv, short_options, long_option, NULL)
@@ -200,6 +210,12 @@ int main(const int argc, char ** argv)
 			case 'l':
 				list = true
 				continue
+			case 'f':
+				if(strcmp(optarg, "irc") == 0)
+					format = irc
+				else if(strcmp(optarg, "html") == 0)
+					format = html
+				continue
 			case 'n':
 				if (optarg != NULL)
 					if (*optarg == '=')
@@ -217,7 +233,7 @@ int main(const int argc, char ** argv)
 		help()
 		return 1
 	
-	dump(source, output, list, groups, number)
+	dump(source, output, list, groups, number, format)
 
 const char * lookup(const char ** table, const char * key, const size_t limit)
 	size_t lookupn = 0
@@ -352,7 +368,7 @@ const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const
 	plist_free(plist)
 	return count
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber)
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, fmt format)
 	int out_fd = 1
 	if (output != NULL)
 		out_fd = open(output, O_WRONLY | O_CREAT | O_TRUNC, 0644)

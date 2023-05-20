@@ -18,16 +18,19 @@ body {
 .message-left-top {
 	background-color: #3b3b3b;
 	border-radius: 20px 20px 20px 5px;
+	align-items: flex-start;
 	margin-bottom: 3px;
 }
 .message-left-middle {
 	background-color: #3b3b3b;
 	border-radius: 5px 20px 20px 5px;
+	align-items: flex-start;
 	margin-bottom: 3px;
 }
 .message-left-bottom {
 	background-color: #3b3b3b;
 	border-radius: 5px 20px 20px 20px;
+	align-items: flex-start;
 	margin-bottom: 15px;
 }
 .message-right-top {
@@ -51,6 +54,7 @@ body {
 .message-left-standalone {
 	background-color: #3b3b3b;
 	border-radius: 20px 20px 20px 20px;
+	align-items: flex-start;
 	margin-bottom: 15px;
 }
 .message-right-standalone {
@@ -71,7 +75,6 @@ body {
 	max-width: 85vw;
 	display: flex;
 	flex-direction: column;
-	align-items: flex-start;
 	justify-content: space-between;
 }
 .message-text {
@@ -80,7 +83,7 @@ body {
 	max-width: 85vw;
 	display: flex;
 	padding : 9px;
-	align-items: flex-start;
+	justify-content: space-between;
 	flex-grow: 1;
 }
 .message-content {

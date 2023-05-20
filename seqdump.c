@@ -30,6 +30,13 @@ typedef enum message_type
 }
 msg_type;
 
+typedef enum format
+{
+	irc,
+	html
+}
+fmt;
+
 typedef struct message
 {
 	time_t timestamp;
@@ -198,7 +205,7 @@ void html_print(int fd, msg * last_msg, const char * next_author, const time_t n
 	dprintf(fd, "%s", html_message_end);
 }
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber);
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, fmt format);
 
 void sql_error(sqlite3 * db, const char * part)
 {
@@ -217,12 +224,14 @@ static void help(void)
 		" -s --sql       -> define sql database\n" \
 		" -o --output    -> define output\n" \
 		" -l --list      -> list rooms\n" \
+		" -f --format    -> set format (irc, html)\n" \
+		" -n --number    -> extract number of Name\n" \
 		" -g --groups    -> define groups to dump\n");
 }
 
 int main(const int argc, char ** argv)
 {
-	const char * short_options = "hVs:o:c:ln::g:a:";
+	const char * short_options = "hVs:o:c:lf:n::g:";
 	const struct option long_option[] =
 	{
 		{
@@ -246,6 +255,10 @@ int main(const int argc, char ** argv)
 		},
 		
 		{
+			"format",       required_argument, 0, 'f'
+		},
+		
+		{
 			"number",       optional_argument, 0, 'n'
 		},
 		
@@ -263,6 +276,7 @@ int main(const int argc, char ** argv)
 	char * groups = NULL;
 	char * number = NULL;
 	bool   list   = false;
+	fmt    format = html;
 	
 	while (1)
 	{
@@ -288,6 +302,16 @@ int main(const int argc, char ** argv)
 				continue;
 			case 'l':
 				list = true;
+				continue;
+			case 'f':
+				if(strcmp(optarg, "irc") == 0)
+				{
+					format = irc;
+				}
+				else if(strcmp(optarg, "html") == 0)
+				{
+					format = html;
+				}
 				continue;
 			case 'n':
 				if (optarg != NULL)
@@ -318,7 +342,7 @@ int main(const int argc, char ** argv)
 		return 1;
 	}
 	
-	dump(source, output, list, groups, number);
+	dump(source, output, list, groups, number, format);
 }
 
 const char * lookup(const char ** table, const char * key, const size_t limit)
@@ -465,9 +489,9 @@ const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const
 						*type = text;
 						char * str;
 						plist_get_string_val(avalue, &str);
-						const size_t str_l = strlen(str);
 						if (str)
 						{
+							const size_t str_l = strlen(str);
 							if (str_l > *dest_s)
 							{
 								*dest = realloc(*dest, str_l + 1);
@@ -516,7 +540,7 @@ const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const
 	return count;
 }
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber)
+int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, fmt format)
 {
 	int out_fd = 1;
 	if (output != NULL)
