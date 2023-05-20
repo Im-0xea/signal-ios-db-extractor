@@ -6,6 +6,8 @@ This is a tool for dumping Signal history from iOS, written in [ib](https://gith
 
 This tool takes the database aquired following [this](https://cight.co/backup-signal-ios-jailbreak/) excellent guide, and dumps it in a Human readable format.
 
+![example image](https://socki.moe/seqdump.png "example output")
+
 ### Usage
 
 Features:
@@ -20,7 +22,7 @@ Mom
 Dad
 You
 
-$ ./seqdump -s db.sql -g Niki
+$ ./seqdump -s db.sql -f irc -g Niki
 
 ------06-12-2021------
 
