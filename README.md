@@ -1,6 +1,6 @@
 # Signal iOS DB Extractor
 
-This is a tool for dumping Signal history from iOS, written in [ib](https://github.com/Niki-Nu/ibranching) C.
+This is a unoffical tool for dumping Signal history from iOS, written in [ib](https://github.com/Niki-Nu/ibranching) C.
 
 ### Introduction
 
