@@ -98,7 +98,7 @@ void html_print(int fd, msg * last_msg, const char * next_author, const time_t n
 			{
 				if (tm_info.tm_yday != tm_info_next.tm_yday)
 				{
-					dir = "bottom";
+					dir = "standalone";
 				}
 				else
 				{
@@ -697,7 +697,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		.last_author     = malloc(128),
 		.body            = malloc(128),
 		.attachments     = malloc(128),
-		.quote           = NULL,
+		.quote           = malloc(128),
 		
 	};
 	while (sqlite3_step(stmt) == SQLITE_ROW)
