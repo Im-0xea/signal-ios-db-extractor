@@ -13,3 +13,7 @@ cd libplist
 ./configure --prefix=/usr
 make
 make install
+
+wget https://www.fontsquirrel.com/fonts/download/inter
+unzip inter
+mv Inter-Regular.otf Inter.otf

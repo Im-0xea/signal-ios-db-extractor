@@ -10,6 +10,10 @@
 #include <sqlite3.h>
 #include <plist/plist.h>
 
+#include "msg.h"
+#include "html.h"
+#include "irc.h"
+
 #define VERSION "0.2"
 /*
 	seqdump
@@ -19,191 +23,12 @@
 		
 */
 
-#include "html.h"
-
-typedef enum message_type
-{
-	none,
-	text,
-	attach,
-	call
-}
-msg_type;
-
 typedef enum format
 {
 	irc,
 	html
 }
 fmt;
-
-typedef struct message
-{
-	time_t timestamp;
-	time_t last_timestamp;
-	time_t quote_timestamp;
-	msg_type type;
-	msg_type type_quote;
-	int call_type;
-	size_t body_max;
-	size_t attachments_max;
-	size_t quote_max;
-	char * author;
-	char * last_author;
-	char * body;
-	char * attachments;
-	char * quote;
-}
-msg;
-
-void html_print(int fd, msg * last_msg, const char * next_author, const time_t next_timestamp, const char * you)
-{
-	if (!last_msg->type)
-	{
-		return;
-	}
-	char time_buffer[30];
-	const struct tm tm_info      = *gmtime(&last_msg->timestamp);
-	const struct tm tm_info_last = *gmtime(&last_msg->last_timestamp);
-	const struct tm tm_info_next = *gmtime(&next_timestamp);
-	if (tm_info.tm_yday != tm_info_last.tm_yday)
-	{
-		strftime(time_buffer, 30, "%e, %b %Y", &tm_info);
-		dprintf(fd, html_dater, time_buffer);
-	}
-	strftime(time_buffer, 30, "%H:%M", &tm_info);
-	
-	if (last_msg->type == call)
-	{
-		char calli[64];
-		const char * call_msg = last_msg->call_type == 2  ? "Outgoing" : \
-		                        last_msg->call_type == 1  ? "Incoming" : \
-		                        last_msg->call_type == 8  ? "Unanswered" : \
-		                        last_msg->call_type == 12 ? "Missed call while on Do not disturb" : \
-		                        last_msg->call_type == 7  ? "Declied" : \
-		                        last_msg->call_type == 3  ? "Missed" : "";
-		sprintf(calli, "&#128222 %s voice call · ", call_msg);
-		strcat(calli, time_buffer);
-		dprintf(fd, html_dater, calli);
-		return;
-	}
-	
-	
-	char * dir;
-	if (strcmp(last_msg->author, last_msg->last_author) == 0)
-	{
-		if (strcmp(last_msg->author, next_author) == 0)
-		{
-			if (tm_info.tm_yday != tm_info_last.tm_yday)
-			{
-				if (tm_info.tm_yday != tm_info_next.tm_yday)
-				{
-					dir = "standalone";
-				}
-				else
-				{
-					dir = "top";
-				}
-			}
-			else
-			{
-				if (tm_info.tm_yday != tm_info_next.tm_yday)
-				{
-					dir = "bottom";
-				}
-				else
-				{
-					dir = "middle";
-				}
-			}
-		}
-		else
-		{
-			if (tm_info.tm_yday != tm_info_last.tm_yday)
-			{
-				dir = "standalone";
-			}
-			else
-			{
-				dir = "bottom";
-			}
-		}
-	}
-	else
-	{
-		if (strcmp(last_msg->author, next_author) == 0)
-		{
-			if (tm_info.tm_yday < tm_info_next.tm_yday)
-			{
-				dir = "standalone";
-			}
-			else
-			{
-				dir = "top";
-			}
-		}
-		else
-		{
-			dir = "standalone";
-		}
-	}
-	char lor[16];
-	if (strcmp(last_msg->author, you) == 0)
-	{
-		strcpy(lor, "right");
-	}
-	else
-	{
-		strcpy(lor, "left");
-	}
-	dprintf(fd, html_message_start, lor, dir);
-	
-	if (last_msg->type_quote != none)
-	{
-		dprintf(fd, "%s", html_message_reply_start);
-		if (last_msg->type_quote == text)
-		{
-			dprintf(fd, html_body, last_msg->quote, "");
-		}
-		if (last_msg->type_quote == attach)
-		{
-			char * attach_ptr = last_msg->quote;
-			while(1)
-			{
-				if (*attach_ptr == '\0')
-				{
-					break;
-				}
-				char * next_ptr = strchr(attach_ptr, '|');
-				if (!next_ptr) break;
-				*next_ptr = '\0';
-				dprintf(fd, html_image, attach_ptr);
-				attach_ptr = next_ptr + 1;
-			}
-		}
-		dprintf(fd, "%s", html_message_reply_end);
-	}
-	
-	char * attach_ptr = last_msg->attachments;
-	while(1)
-	{
-		if (*attach_ptr == '\0')
-		{
-			break;
-		}
-		char * next_ptr = strchr(attach_ptr, '|');
-		if (!next_ptr) break;
-		*next_ptr = '\0';
-		dprintf(fd, html_image, attach_ptr);
-		attach_ptr = next_ptr + 1;
-	}
-	
-	if (last_msg->type == text)
-	{
-		dprintf(fd, html_body, last_msg->body, time_buffer);
-	}
-	dprintf(fd, "%s", html_message_end);
-}
 
 int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, fmt format);
 
@@ -671,7 +496,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		goto close;
 	}
 	
-	dprintf(out_fd, "%s\n", html_header);
+	html_init(out_fd);
 	
 	// loops over all message in the target thread
 	sqlite3_stmt * stmt;
@@ -789,7 +614,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 	free(group);
 	
 	sqlite3_finalize(stmt);
-	dprintf(out_fd, "%s\n", html_footer);
+	html_close(out_fd);
 	
 	close:
 	sqlite3_close(db);
