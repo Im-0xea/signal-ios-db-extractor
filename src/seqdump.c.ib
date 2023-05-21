@@ -14,7 +14,7 @@
 #include "html.h"
 #include "irc.h"
 
-#define VERSION "0.2"
+#define VERSION "0.3"
 /*
 	seqdump
 	
@@ -33,6 +33,17 @@ void sql_error(sqlite3 * db, const char * part)
 	fprintf(stderr, "failed at %s", part)
 	sqlite3_close(db)
 	exit(1)
+
+void free_table(char ** table, size_t pos)
+	while (pos > 0)
+		pos--
+		free(table[pos])
+	free(table)
+
+void realloc_check(char ** buf, size_t new, size_t * old)
+	if (new > *old)
+		*buf = realloc(*buf, new + 1)
+		*old = new
 
 static void help(void)
 	puts("Usage seqdump: -s [DATABASE] -o [OUTPUT] \n\n" \
@@ -228,10 +239,7 @@ const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const
 					char * str
 					plist_get_string_val(avalue, &str)
 					if (!str) continue
-					const size_t str_l = strlen(str)
-					if (str_l > *dest_s)
-						*dest = realloc(*dest, str_l + 1)
-						*dest_s = str_l
+					realloc_check(dest, strlen(str), dest_s)
 					strcpy(*dest, str)
 					plist_mem_free(str)
 					count++
@@ -243,10 +251,7 @@ const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const
 					attach_lookup(&path, str, db)
 					plist_mem_free(str)
 					if (!path) continue
-					const size_t path_l = strlen(path)
-					if (path_l > *dest_s)
-						*dest = realloc(*dest, path_l + 1)
-						*dest_s = path_l
+					realloc_check(dest, strlen(path), dest_s)
 					sprintf(*dest, "%s", path)
 					free(path)
 					count++
@@ -402,6 +407,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 		if (list)
 			dprintf(out_fd, "%s\n", name)
 			continue
+		
 		if (group_table_last_malloc + 10 <= group_table_pos)
 			group_table = realloc(group_table, (group_table_pos + 10) * sizeof(char *))
 			group_table_last_malloc += 10
@@ -473,26 +479,20 @@ int dump(const char * source, const char * output, const bool list, const char *
 				free(uuids[uuidc])
 				if (path)
 					path_l += strlen(path) + 1
-					if (path_l > last_msg.attachments_max)
-						last_msg.attachments = realloc(last_msg.attachments, path_l + 1)
-						last_msg.attachments_max = path_l
-						
+					realloc_check(&last_msg.attachments, path_l, &last_msg.attachments_max)
 					strcat(last_msg.attachments, path)
 					strcat(last_msg.attachments, "|")
 					
 					free(path)
-				if (!uuidc)
-					free(uuids)
+			if (uuids)
+				free(uuids)
 		last_msg.type_quote = none
 		if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
 			quote_plister(&last_msg.quote, &last_msg.quote_max, &last_msg.type_quote, sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6), db)
 		
 		if (type == text)
 			const char * body   = sqlite3_column_text(stmt, 0)
-			const size_t body_l = strlen(body)
-			if (body_l > last_msg.body_max)
-				last_msg.body = realloc(last_msg.body, body_l + 1)
-				last_msg.body_max = body_l
+			realloc_check(&last_msg.body, strlen(body), &last_msg.body_max)
 			strcpy(last_msg.body, sqlite3_column_text(stmt, 0))
 		else if (type == call)
 			last_msg.call_type = sqlite3_column_int64(stmt, 4)
@@ -515,28 +515,15 @@ int dump(const char * source, const char * output, const bool list, const char *
 	
 	sqlite3_finalize(stmt)
 	html_close(out_fd)
-	
 	close:
 	sqlite3_close(db)
 	
 	// free name_table
-	while (1)
-		name_table_pos -= 2
-		free(name_table[name_table_pos])
-		free(name_table[name_table_pos + 1])
-		if (name_table_pos <= 0)
-			break
-	free(name_table)
+	free_table(name_table, name_table_pos)
 	
 	// free group table (if needed)
 	if (!list)
-		while (1)
-			group_table_pos -= 2
-			free(group_table[group_table_pos])
-			free(group_table[group_table_pos + 1])
-			if (group_table_pos <= 0)
-				break
-		free(group_table)
+		free_table(group_table, group_table_pos)
 	
 	// free file if defined
 	if (output != NULL)
