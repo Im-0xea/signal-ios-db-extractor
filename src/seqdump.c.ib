@@ -105,13 +105,12 @@ int main(const int argc, char ** argv)
 					format = html
 				continue
 			case 'n':
-				if (optarg != NULL)
-					if (*optarg == '=')
-						number = optarg + 1
-					else
-						number = optarg
-				else
+				if (optarg == NULL)
 					number = (char *) 1
+				else if (*optarg == '=')
+					number = optarg + 1
+				else
+					number = optarg
 				continue
 			case 'g':
 				groups = optarg
@@ -141,18 +140,20 @@ size_t uuid_plister(char *** dest, const char * plist, const size_t plist_size)
 	size_t count = 0
 	size_t last_malloc = 10
 	while (plist + 37 <= plist_end)
-		if (*plist == '$' && *(plist + 9) == '-')
-			if (!count)
-				*dest = malloc(10 * sizeof(char *))
-			else if (last_malloc <= count)
-				*dest = realloc(*dest, (count + 10) * sizeof(char *))
-				last_malloc += 10
-			(*dest)[count] = malloc(40 * sizeof(char))
-			bzero((*dest)[count], 40)
-			strncpy((*dest)[count], plist + 1, 36)
-			count++
-			plist += 35
-		plist++
+		if (*plist != '$' || *(plist + 9) != '-')
+			plist++
+			continue
+		
+		if (!count)
+			*dest = malloc(10 * sizeof(char *))
+		else if (last_malloc <= count)
+			*dest = realloc(*dest, (count + 10) * sizeof(char *))
+			last_malloc += 10
+		(*dest)[count] = malloc(40 * sizeof(char))
+		bzero((*dest)[count], 40)
+		strncpy((*dest)[count], plist + 1, 36)
+		count++
+		plist += 36
 	return count
 
 void attach_lookup(char ** dest, char * key, sqlite3 * db)
@@ -217,37 +218,39 @@ const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const
 				plist_mem_free(dkeys)
 				free(diter)
 				dict_checked = true
-			else if (plist_get_node_type(avalue) == PLIST_STRING)
-				if (str_c == 1)
-					if (!attachi)
-						*type = text
-						char * str
-						plist_get_string_val(avalue, &str)
-						if (str)
-							const size_t str_l = strlen(str)
-							if (str_l > *dest_s)
-								*dest = realloc(*dest, str_l + 1)
-								*dest_s = str_l
-							strcpy(*dest, str)
-							plist_mem_free(str)
-							count++
-					else
-						*type = attach
-						char * str
-						plist_get_string_val(avalue, &str)
-						char * path = NULL
-						attach_lookup(&path, str, db)
-						plist_mem_free(str)
-						if (path)
-							const size_t path_l = strlen(path)
-							if (path_l > *dest_s)
-								*dest = realloc(*dest, path_l + 1)
-								*dest_s = path_l
-							sprintf(*dest, "%s", path)
-							free(path)
-							count++
-					break
-				str_c++
+				continue
+			if (plist_get_node_type(avalue) == PLIST_STRING)
+				if (str_c != 1)
+					str_c++
+					continue
+				if (!attachi)
+					*type = text
+					char * str
+					plist_get_string_val(avalue, &str)
+					if (!str) continue
+					const size_t str_l = strlen(str)
+					if (str_l > *dest_s)
+						*dest = realloc(*dest, str_l + 1)
+						*dest_s = str_l
+					strcpy(*dest, str)
+					plist_mem_free(str)
+					count++
+				else
+					*type = attach
+					char * str
+					plist_get_string_val(avalue, &str)
+					char * path = NULL
+					attach_lookup(&path, str, db)
+					plist_mem_free(str)
+					if (!path) continue
+					const size_t path_l = strlen(path)
+					if (path_l > *dest_s)
+						*dest = realloc(*dest, path_l + 1)
+						*dest_s = path_l
+					sprintf(*dest, "%s", path)
+					free(path)
+					count++
+				break
 		free(aiter)
 		if (count) 
 			break
@@ -286,21 +289,28 @@ void group_plister(char ** dest, const char * plist_buf, size_t plist_size)
 			
 			if (!avalue) break
 			
-			if (plist_get_node_type(avalue) == PLIST_STRING)
-				if (str_c == 1)
-					char * str
-					plist_get_string_val(avalue, &str)
-					if (str)
-						if (strncmp("groups/", str, 7) == 0)
-							str_c -= 1
-							plist_mem_free(str)
-							continue
-						const size_t str_l = strlen(str)
-						*dest = malloc(str_l + 1)
-						strcpy(*dest, str)
-						plist_mem_free(str)
-					break
+			if (plist_get_node_type(avalue) != PLIST_STRING)
+				continue
+			
+			if (str_c != 1)
 				str_c++
+				continue
+			
+			char * str
+			plist_get_string_val(avalue, &str)
+			if (!str)
+				break
+			
+			if (strncmp("groups/", str, 7) == 0)
+				str_c -= 1
+				plist_mem_free(str)
+				continue
+			
+			const size_t str_l = strlen(str)
+			*dest = malloc(str_l + 1)
+			strcpy(*dest, str)
+			plist_mem_free(str)
+			break
 		free(aiter)
 	
 	free(iter)
@@ -322,13 +332,14 @@ int dump(const char * source, const char * output, const bool list, const char *
 	char * acc_number = NULL
 	if (sqlite3_prepare_v2(db, "SELECT recipientPhoneNumber FROM model_SignalRecipient WHERE id = 1;", -1, &an_stmt, NULL) != SQLITE_OK)
 		sql_error(db, "Account Phone number")
-	if (sqlite3_step(an_stmt) == SQLITE_ROW)
-		const char * num = sqlite3_column_text(an_stmt, 0)
-		const size_t num_l = strlen(num)
-		acc_number = malloc((num_l + 1) * sizeof(char))
-		strcpy(acc_number, num)
-	else
+	
+	if (sqlite3_step(an_stmt) != SQLITE_ROW)
 		sql_error(db, "Account Phone number")
+	
+	const char * num = sqlite3_column_text(an_stmt, 0)
+	const size_t num_l = strlen(num)
+	acc_number = malloc((num_l + 1) * sizeof(char))
+	strcpy(acc_number, num)
 	sqlite3_finalize(an_stmt)
 	
 	// create profile lookup table
@@ -337,27 +348,30 @@ int dump(const char * source, const char * output, const bool list, const char *
 	sqlite3_stmt * pft_stmt
 	if (sqlite3_prepare_v2(db, "SELECT profileName, recipientPhoneNumber FROM model_OWSUserProfile;", -1, &pft_stmt, NULL) != SQLITE_OK)
 		sql_error(db, "Profile Table")
+	
 	char ** name_table = malloc(10 * sizeof(char *))
 	size_t name_table_pos = 0
 	size_t name_table_last_malloc = 0
 	while (sqlite3_step(pft_stmt) == SQLITE_ROW)
-		if (sqlite3_column_type(pft_stmt, 0) != SQLITE_NULL && (sqlite3_column_type(pft_stmt, 1) != SQLITE_NULL || name_table_pos == 0))
-			const unsigned char * name = sqlite3_column_text(pft_stmt, 0)
-			unsigned char * number = NULL
-			if (name_table_last_malloc + 10 <= name_table_pos)
-				name_table = realloc(name_table, (name_table_pos + 10) * sizeof(char *))
-				name_table_last_malloc += 10
-			name_table[name_table_pos] = malloc(64)
-			name_table[name_table_pos + 1] = malloc(64)
-			if (name_table_pos == 0)
-				number = acc_number
-			else
-				number = (unsigned char *) sqlite3_column_text(pft_stmt, 1)
-			if ((nnumber > (char *) 1 && strcmp(name, nnumber) == 0) || nnumber == (char *) 1)
-				dprintf(out_fd, "%s: %s\n", name, number)
-			strcpy(name_table[name_table_pos], name)
-			strcpy(name_table[name_table_pos + 1], number)
-			name_table_pos += 2
+		if (sqlite3_column_type(pft_stmt, 0) == SQLITE_NULL || (sqlite3_column_type(pft_stmt, 1) == SQLITE_NULL && name_table_pos != 0))
+			continue
+		
+		const unsigned char * name = sqlite3_column_text(pft_stmt, 0)
+		unsigned char * number = NULL
+		if (name_table_last_malloc + 10 <= name_table_pos)
+			name_table = realloc(name_table, (name_table_pos + 10) * sizeof(char *))
+			name_table_last_malloc += 10
+		name_table[name_table_pos] = malloc(64)
+		name_table[name_table_pos + 1] = malloc(64)
+		if (name_table_pos == 0)
+			number = acc_number
+		else
+			number = (unsigned char *) sqlite3_column_text(pft_stmt, 1)
+		if ((nnumber > (char *) 1 && strcmp(name, nnumber) == 0) || nnumber == (char *) 1)
+			dprintf(out_fd, "%s: %s\n", name, number)
+		strcpy(name_table[name_table_pos], name)
+		strcpy(name_table[name_table_pos + 1], number)
+		name_table_pos += 2
 	sqlite3_finalize(pft_stmt)
 	
 	// create group lookup table
@@ -370,37 +384,39 @@ int dump(const char * source, const char * output, const bool list, const char *
 	char * group
 	size_t group_table_last_malloc = 0
 	while (sqlite3_step(gt_stmt) == SQLITE_ROW)
-		if (sqlite3_column_type(gt_stmt, 0) != SQLITE_NULL)
-			const char * group_id = sqlite3_column_text(gt_stmt, 0)
-			char * name = NULL
-			if (sqlite3_column_type(gt_stmt, 2) != SQLITE_NULL)
-				const char * group_model = sqlite3_column_blob(gt_stmt, 2)
-				group_plister(&name, group_model, sqlite3_column_bytes(gt_stmt, 2))
-			else
-				if (sqlite3_column_type(gt_stmt, 1) == SQLITE_NULL)
-					continue
-				const char * number = sqlite3_column_text(gt_stmt, 1)
-				name = lookup(name_table, number, name_table_pos)
-			if (!name)
+		if (sqlite3_column_type(gt_stmt, 0) == SQLITE_NULL)
+			continue
+		
+		const char * group_id = sqlite3_column_text(gt_stmt, 0)
+		char * name = NULL
+		if (sqlite3_column_type(gt_stmt, 2) != SQLITE_NULL)
+			const char * group_model = sqlite3_column_blob(gt_stmt, 2)
+			group_plister(&name, group_model, sqlite3_column_bytes(gt_stmt, 2))
+		else
+			if (sqlite3_column_type(gt_stmt, 1) == SQLITE_NULL)
 				continue
-			if (list)
-				dprintf(out_fd, "%s\n", name)
-				continue
-			if (group_table_last_malloc + 10 <= group_table_pos)
-				group_table = realloc(group_table, (group_table_pos + 10) * sizeof(char *))
-				group_table_last_malloc += 10
-			if (sqlite3_column_type(gt_stmt, 2) != SQLITE_NULL)
-				group_table[group_table_pos] = name
-			else
-				group_table[group_table_pos] = malloc(64)
-				strcpy(group_table[group_table_pos], name)
-			group_table[group_table_pos + 1] = malloc(64)
-			if (strcmp(name, groups) == 0)
-				group = malloc(strlen(group_id) + 1)
-				strcpy(group, group_id)
-				
-			strcpy(group_table[group_table_pos + 1], group_id)
-			group_table_pos += 2
+			const char * number = sqlite3_column_text(gt_stmt, 1)
+			name = lookup(name_table, number, name_table_pos)
+		if (!name)
+			continue
+		if (list)
+			dprintf(out_fd, "%s\n", name)
+			continue
+		if (group_table_last_malloc + 10 <= group_table_pos)
+			group_table = realloc(group_table, (group_table_pos + 10) * sizeof(char *))
+			group_table_last_malloc += 10
+		if (sqlite3_column_type(gt_stmt, 2) != SQLITE_NULL)
+			group_table[group_table_pos] = name
+		else
+			group_table[group_table_pos] = malloc(64)
+			strcpy(group_table[group_table_pos], name)
+		group_table[group_table_pos + 1] = malloc(64)
+		if (strcmp(name, groups) == 0)
+			group = malloc(strlen(group_id) + 1)
+			strcpy(group, group_id)
+			
+		strcpy(group_table[group_table_pos + 1], group_id)
+		group_table_pos += 2
 	sqlite3_finalize(gt_stmt)
 	
 	if (list || nnumber != NULL || nnumber == (char *) 1)
