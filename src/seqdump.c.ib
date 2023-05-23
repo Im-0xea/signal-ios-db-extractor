@@ -417,7 +417,7 @@ int dump(const char * source, const char * output, const bool list, const char *
 			group_table[group_table_pos] = malloc(64)
 			strcpy(group_table[group_table_pos], name)
 		group_table[group_table_pos + 1] = malloc(64)
-		if (strcmp(name, groups) == 0)
+		if (groups && strcmp(name, groups) == 0)
 			group = malloc(strlen(group_id) + 1)
 			strcpy(group, group_id)
 			
