@@ -230,32 +230,34 @@ const size_t quote_plister(char ** dest, size_t * dest_s, msg_type * type, const
 				free(diter)
 				dict_checked = true
 				continue
-			if (plist_get_node_type(avalue) == PLIST_STRING)
-				if (str_c != 1)
-					str_c++
-					continue
-				if (!attachi)
-					*type = text
-					char * str
-					plist_get_string_val(avalue, &str)
-					if (!str) continue
-					realloc_check(dest, strlen(str), dest_s)
-					strcpy(*dest, str)
-					plist_mem_free(str)
-					count++
-				else
-					*type = attach
-					char * str
-					plist_get_string_val(avalue, &str)
-					char * path = NULL
-					attach_lookup(&path, str, db)
-					plist_mem_free(str)
-					if (!path) continue
-					realloc_check(dest, strlen(path), dest_s)
-					sprintf(*dest, "%s", path)
-					free(path)
-					count++
-				break
+			if (plist_get_node_type(avalue) != PLIST_STRING)
+				continue
+			
+			if (str_c != 1)
+				str_c++
+				continue
+			if (!attachi)
+				*type = text
+				char * str
+				plist_get_string_val(avalue, &str)
+				if (!str) continue
+				realloc_check(dest, strlen(str), dest_s)
+				strcpy(*dest, str)
+				plist_mem_free(str)
+				count++
+			else
+				*type = attach
+				char * str
+				plist_get_string_val(avalue, &str)
+				char * path = NULL
+				attach_lookup(&path, str, db)
+				plist_mem_free(str)
+				if (!path) continue
+				realloc_check(dest, strlen(path), dest_s)
+				sprintf(*dest, "%s", path)
+				free(path)
+				count++
+			break
 		free(aiter)
 		if (count) 
 			break
@@ -477,13 +479,15 @@ int dump(const char * source, const char * output, const bool list, const char *
 				char * path = NULL
 				attach_lookup(&path, uuids[uuidc], db)
 				free(uuids[uuidc])
-				if (path)
-					path_l += strlen(path) + 1
-					realloc_check(&last_msg.attachments, path_l, &last_msg.attachments_max)
-					strcat(last_msg.attachments, path)
-					strcat(last_msg.attachments, "|")
-					
-					free(path)
+				if (!path)
+					continue
+				
+				path_l += strlen(path) + 1
+				realloc_check(&last_msg.attachments, path_l, &last_msg.attachments_max)
+				strcat(last_msg.attachments, path)
+				strcat(last_msg.attachments, "|")
+				
+				free(path)
 			if (uuids)
 				free(uuids)
 		last_msg.type_quote = none
