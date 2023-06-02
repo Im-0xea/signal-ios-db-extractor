@@ -323,7 +323,67 @@ void group_plister(char ** dest, const char * plist_buf, size_t plist_size)
 	free(iter)
 	plist_free(plist)
 
-int dump(const char * source, const char * output, const bool list, const char * groups, const char * nnumber, fmt format)
+void \
+parse_interaction(sqlite3 * db, sqlite3_stmt * stmt, msg * last_msg, \
+	char ** name_table, const int name_table_pos, char ** group_table, const char * acc_number, const int out_fd)
+	const msg_type type = (sqlite3_column_type(stmt, 0) != SQLITE_NULL) ? text : \
+			      (sqlite3_column_type(stmt, 4) != SQLITE_NULL) ? call : \
+			      (sqlite3_column_type(stmt, 5) != SQLITE_NULL) ? attach : \
+			      none
+	if (!type) return
+	const char * author = (sqlite3_column_type(stmt, 2) == SQLITE_NULL) ? \
+	acc_number : \
+	(const char *) sqlite3_column_text(stmt, 2)
+	const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
+	
+	html_print(out_fd, last_msg, author, timestamp, acc_number)
+	
+	const char * name = lookup(name_table, author, name_table_pos)
+	
+	if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
+		char ** uuids = NULL
+		size_t uuidc = uuid_plister(&uuids, sqlite3_column_blob(stmt, 5), sqlite3_column_bytes(stmt, 5))
+		if (!uuidc && type == 3) return
+		last_msg->attachments[0] = '\0'
+		size_t path_l = 1
+		while (uuidc)
+			--uuidc
+			char * path = NULL
+			attach_lookup(&path, uuids[uuidc], db)
+			free(uuids[uuidc])
+			if (!path)
+				return
+			
+			path_l += strlen(path) + 1
+			realloc_check(&last_msg->attachments, path_l, &last_msg->attachments_max)
+			strcat(last_msg->attachments, path)
+			strcat(last_msg->attachments, "|")
+			
+			free(path)
+		if (uuids)
+			free(uuids)
+	last_msg->type_quote = none
+	if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
+		quote_plister(&last_msg->quote, &last_msg->quote_max, &last_msg->type_quote, sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6), db)
+	
+	if (type == text)
+		const char * body   = sqlite3_column_text(stmt, 0)
+		realloc_check(&last_msg->body, strlen(body), &last_msg->body_max)
+		strcpy(last_msg->body, sqlite3_column_text(stmt, 0))
+	else if (type == call)
+		last_msg->call_type = sqlite3_column_int64(stmt, 4)
+	
+	char * new_author = last_msg->last_author
+	last_msg->last_author = last_msg->author
+	last_msg->author = new_author
+	strcpy(last_msg->author, author)
+	last_msg->last_timestamp = last_msg->timestamp
+	last_msg->timestamp = timestamp
+	last_msg->type = type
+
+int \
+dump(const char * source, const char * output, const bool list, \
+	const char * groups, const char * nnumber, fmt format)
 	int out_fd = 1
 	if (output != NULL)
 		out_fd = open(output, O_WRONLY | O_CREAT | O_TRUNC, 0644)
@@ -434,7 +494,10 @@ int dump(const char * source, const char * output, const bool list, const char *
 	
 	// loops over all message in the target thread
 	sqlite3_stmt * stmt
-	if ((sqlite3_prepare_v2(db, "SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, callType, attachmentIds, quotedMessage FROM model_TSInteraction WHERE uniqueThreadId = ? ORDER BY id;", -1, &stmt, NULL)) != SQLITE_OK)
+	if ((sqlite3_prepare_v2(db, \
+		"SELECT body, uniqueThreadId, authorPhoneNumber, timestamp, " \
+		"callType, attachmentIds, quotedMessage FROM model_TSInteraction " \
+		"WHERE uniqueThreadId = ? ORDER BY id;", -1, &stmt, NULL)) != SQLITE_OK)
 		sql_error(db, "Interaction table")
 	if (sqlite3_bind_text(stmt, 1, group, -1, SQLITE_TRANSIENT) != SQLITE_OK)
 		sql_error(db, "Interaction table")
@@ -454,61 +517,9 @@ int dump(const char * source, const char * output, const bool list, const char *
 		.quote           = malloc(128)
 		
 	while (sqlite3_step(stmt) == SQLITE_ROW)
-		const msg_type type = (sqlite3_column_type(stmt, 0) != SQLITE_NULL) ? text : \
-		                      (sqlite3_column_type(stmt, 4) != SQLITE_NULL) ? call : \
-		                      (sqlite3_column_type(stmt, 5) != SQLITE_NULL) ? attach : \
-		                      none
-		if (!type) continue
-		const char * author = (sqlite3_column_type(stmt, 2) == SQLITE_NULL) ? \
-		acc_number : \
-		(const char *) sqlite3_column_text(stmt, 2)
-		const time_t timestamp = sqlite3_column_int64(stmt, 3) / 1000
-		
-		html_print(out_fd, &last_msg, author, timestamp, acc_number)
-		
-		const char * name = lookup(name_table, author, name_table_pos)
-		
-		if (sqlite3_column_type(stmt, 5) != SQLITE_NULL)
-			char ** uuids = NULL
-			size_t uuidc = uuid_plister(&uuids, sqlite3_column_blob(stmt, 5), sqlite3_column_bytes(stmt, 5))
-			if (!uuidc && type == 3) continue
-			last_msg.attachments[0] = '\0'
-			size_t path_l = 1
-			while (uuidc)
-				--uuidc
-				char * path = NULL
-				attach_lookup(&path, uuids[uuidc], db)
-				free(uuids[uuidc])
-				if (!path)
-					continue
-				
-				path_l += strlen(path) + 1
-				realloc_check(&last_msg.attachments, path_l, &last_msg.attachments_max)
-				strcat(last_msg.attachments, path)
-				strcat(last_msg.attachments, "|")
-				
-				free(path)
-			if (uuids)
-				free(uuids)
-		last_msg.type_quote = none
-		if (sqlite3_column_type(stmt, 6) != SQLITE_NULL)
-			quote_plister(&last_msg.quote, &last_msg.quote_max, &last_msg.type_quote, sqlite3_column_blob(stmt, 6), sqlite3_column_bytes(stmt, 6), db)
-		
-		if (type == text)
-			const char * body   = sqlite3_column_text(stmt, 0)
-			realloc_check(&last_msg.body, strlen(body), &last_msg.body_max)
-			strcpy(last_msg.body, sqlite3_column_text(stmt, 0))
-		else if (type == call)
-			last_msg.call_type = sqlite3_column_int64(stmt, 4)
-		
-		char * new_author = last_msg.last_author
-		last_msg.last_author = last_msg.author
-		last_msg.author = new_author
-		strcpy(last_msg.author, author)
-		last_msg.last_timestamp = last_msg.timestamp
-		last_msg.timestamp = timestamp
-		last_msg.type = type
-		
+		parse_interaction(db, stmt, &last_msg, name_table, name_table_pos, \
+			group_table, acc_number, out_fd)
+	
 	html_print(out_fd, &last_msg, NULL, last_msg.timestamp,  acc_number)
 	free(last_msg.author)
 	free(last_msg.last_author)
