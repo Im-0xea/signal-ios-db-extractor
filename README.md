@@ -1,6 +1,6 @@
 # Signal iOS DB Extractor
 
-This is a unoffical tool for dumping Signal history from iOS, written in [ib](https://github.com/Niki-Nu/ibranching) C.
+This is a unoffical tool for dumping Signal history from iOS, written in [ib](https://github.com/Im-0xea/ibranching) C.
 
 ### Introduction
 
@@ -17,18 +17,18 @@ Features:
 
 ~~~
 $ ./seqdump -s db.sql -l
-Niki
+Xea
 Mom
 Dad
 You
 
-$ ./seqdump -s db.sql -g Niki -o out.html
+$ ./seqdump -s db.sql -g Xea -o out.html
 ~~~
 
 ### Building
 
 #### Dependencies:
-- [ib](https://github.com/Niki-Nu/ibranching)
+- [ib](https://github.com/Im-0xea/ibranching)
 - sqlite3
 - libplist ( >= 2.3.0)
 
