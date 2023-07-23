@@ -4,7 +4,7 @@ This is a unoffical tool for dumping Signal history from iOS, written in [ib](ht
 
 ### Introduction
 
-This tool takes the database aquired following [this](https://cight.co/backup-signal-ios-jailbreak/) excellent guide, and dumps it in a Human readable format.
+This tool takes the database aquired following [this](https://web.archive.org/web/20220723075618/https://cight.co/backup-signal-ios-jailbreak/) excellent guide, and dumps it in a Human readable format.
 
 ![example image](https://socki.moe/sig.png "example output")
 
